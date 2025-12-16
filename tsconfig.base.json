@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "lib": ["ES2022"],
+    "declaration": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@code-hive/nestjs": ["libs/nestjs/src/index.ts"],
+      "@code-hive/types": ["libs/types/src/index.ts"],
+      "@code-hive/auth-service/*": ["apps/services/auth/src/*"],
+      "@code-hive/user-service/*": ["apps/services/user/src/*"],
+      "@code-hive/admin/*": ["apps/web/admin/src/*"],
+      "@code-hive/public/*": ["apps/web/public/src/*"]
+    }
+  },
+  "exclude": ["node_modules", "dist"]
+}

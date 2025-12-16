@@ -1,0 +1,14 @@
+#!/usr/bin/env sh
+PROJECT_ROOT="$(git rev-parse --show-toplevel)"
+cd "$PROJECT_ROOT" || exit 1
+
+PNPM_BIN="$PROJECT_ROOT/node_modules/.bin/pnpm"
+
+if [ ! -f "$PNPM_BIN" ]; then
+  echo "Error: pnpm not found at $PNPM_BIN"
+  echo "Please run: pnpm install"
+  exit 1
+fi
+
+# Run lint-staged on staged files
+"$PNPM_BIN" exec lint-staged
