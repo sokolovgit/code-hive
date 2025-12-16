@@ -13,8 +13,7 @@
     "prepare": "husky",
     "changeset": "changeset",
     "version": "changeset version",
-    "release": "pnpm build && changeset publish",
-    "graph": "nx graph"
+    "release": "pnpm build && changeset publish"
   },
   "engines": {
     "node": ">=24.12.0",
@@ -26,7 +25,13 @@
     "@commitlint/cli": "^20.2.0",
     "@commitlint/config-conventional": "^20.2.0",
     "@eslint/js": "^9.39.2",
-    "@nx/eslint-plugin": "^22.2.6",
+    "@nestjs/cli": "^11.0.14",
+    "@nestjs/schematics": "^11.0.0",
+    "@nestjs/testing": "^11.0.0",
+    "@swc-node/register": "~1.9.1",
+    "@swc/core": "~1.5.7",
+    "@swc/helpers": "~0.5.11",
+    "@types/jest": "^30.0.0",
     "@types/node": "^25.0.2",
     "@typescript-eslint/eslint-plugin": "^8.49.0",
     "@typescript-eslint/parser": "^8.49.0",
@@ -35,11 +40,18 @@
     "eslint-import-resolver-typescript": "^4.4.4",
     "eslint-plugin-import": "^2.32.0",
     "husky": "^9.1.7",
+    "jest": "^30.0.2",
+    "jest-environment-node": "^30.0.2",
+    "jest-util": "^30.0.2",
     "lint-staged": "^16.2.7",
-    "nx": "^22.2.3",
     "pnpm": "10.25.0",
     "prettier": "^3.7.4",
+    "ts-jest": "^29.4.0",
+    "ts-node": "10.9.1",
     "turbo": "^2.6.3",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "tslib": "^2.3.0"
   }
 }

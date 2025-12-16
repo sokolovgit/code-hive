@@ -1,0 +1,36 @@
+{
+  "name": "@code-hive/users-service",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Users microservice - manages user data and operations",
+  "main": "dist/main.js",
+  "types": "dist/main.d.ts",
+  "scripts": {
+    "start": "node dist/main.js",
+    "dev": "ts-node --project tsconfig.app.json src/main.ts",
+    "build": "tsc -p tsconfig.app.json",
+    "test": "jest",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.1.9",
+    "@nestjs/core": "^11.1.9",
+    "@nestjs/platform-express": "^11.1.9",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.3",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "^11.1.9",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^25.0.2",
+    "eslint": "^9.39.2",
+    "jest": "^30.0.2",
+    "ts-jest": "^29.4.0",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=24.12.0"
+  }
+}

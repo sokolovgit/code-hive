@@ -1,5 +1,4 @@
 import js from '@eslint/js';
-import nxPlugin from '@nx/eslint-plugin';
 import tseslint from '@typescript-eslint/eslint-plugin';
 import tsparser from '@typescript-eslint/parser';
 import prettier from 'eslint-config-prettier';
@@ -7,10 +6,19 @@ import importPlugin from 'eslint-plugin-import';
 
 export default [
   {
-    ignores: ['node_modules/**', 'dist/**', 'build/**', '.next/**', 'coverage/**'],
+    ignores: [
+      'node_modules/**',
+      'dist/**',
+      'build/**',
+      '.next/**',
+      'coverage/**',
+      '**/webpack.config.js',
+      '**/*.config.js',
+      '**/*.config.cjs',
+      '**/*.config.mjs',
+    ],
   },
   js.configs.recommended,
-  ...nxPlugin.configs['flat/base'],
   ...tseslint.configs['flat/recommended'],
   {
     files: ['*.ts', '*.tsx', '*.js', '*.jsx'],
@@ -19,7 +27,6 @@ export default [
       sourceType: 'module',
     },
     plugins: {
-      '@nx': nxPlugin,
       import: importPlugin,
     },
     settings: {
@@ -31,19 +38,6 @@ export default [
       },
     },
     rules: {
-      '@nx/enforce-module-boundaries': [
-        'error',
-        {
-          enforceBuildableLibDependency: true,
-          allow: [],
-          depConstraints: [
-            {
-              sourceTag: '*',
-              onlyDependOnLibsWithTags: ['*'],
-            },
-          ],
-        },
-      ],
       'import/order': [
         'error',
         {
@@ -91,3 +85,4 @@ export default [
   },
   prettier,
 ];
+

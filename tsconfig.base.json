@@ -4,20 +4,23 @@
     "module": "commonjs",
     "lib": ["ES2022"],
     "declaration": true,
+    "declarationMap": true,
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
+    "composite": true,
+    "incremental": true,
     "baseUrl": ".",
     "paths": {
-      "@code-hive/nestjs": ["libs/nestjs/src/index.ts"],
+      "@code-hive/users-service": ["apps/services/users/src/index.ts"],
+      "@code-hive/users-service/*": ["apps/services/users/src/*"],
+      "@code-hive/nestjs-common": ["libs/nestjs/common/src/index.ts"],
+      "@code-hive/nestjs-common/*": ["libs/nestjs/common/src/*"],
       "@code-hive/types": ["libs/types/src/index.ts"],
-      "@code-hive/auth-service/*": ["apps/services/auth/src/*"],
-      "@code-hive/user-service/*": ["apps/services/user/src/*"],
-      "@code-hive/admin/*": ["apps/web/admin/src/*"],
-      "@code-hive/public/*": ["apps/web/public/src/*"]
+      "@code-hive/types/*": ["libs/types/src/*"]
     }
   },
-  "exclude": ["node_modules", "dist"]
+  "exclude": ["node_modules", "dist", "**/dist", "**/build", "**/.next"]
 }
