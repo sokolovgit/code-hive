@@ -10,6 +10,7 @@ import { Request, Response } from 'express';
 import { RpcException } from '@nestjs/microservices';
 import { throwError } from 'rxjs';
 import { LoggerService } from '../logger.service';
+import { BaseError, RpcError } from '../../errors';
 
 @Catch()
 export class ExceptionLoggingFilter implements ExceptionFilter {
@@ -36,35 +37,58 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
 
+    // Determine status code - prioritize custom errors, then HttpException, then default
     const status =
-      exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
+      exception instanceof BaseError && exception.statusCode
+        ? exception.statusCode
+        : exception instanceof HttpException
+          ? exception.getStatus()
+          : HttpStatus.INTERNAL_SERVER_ERROR;
 
     const requestId =
       request.headers['x-request-id'] || request.headers['x-correlation-id'] || `req-${Date.now()}`;
 
-    const errorResponse =
-      exception instanceof HttpException
-        ? exception.getResponse()
+    // Build error response - use custom error's client-safe format if available
+    let errorResponse: Record<string, unknown>;
+    if (exception instanceof BaseError) {
+      errorResponse = {
+        statusCode: status,
+        ...exception.getClientSafeError(),
+      };
+    } else if (exception instanceof HttpException) {
+      errorResponse =
+        typeof exception.getResponse() === 'object'
+          ? (exception.getResponse() as Record<string, unknown>)
+          : {
+              statusCode: status,
+              message: exception.message,
+            };
+    } else {
+      errorResponse = {
+        statusCode: status,
+        message: 'Internal server error',
+      };
+    }
+
+    // Build error info for logging - use custom error's toJSON if available
+    const errorInfo: Record<string, unknown> =
+      exception instanceof BaseError
+        ? exception.toJSON()
         : {
-            statusCode: status,
-            message: 'Internal server error',
+            name: exception instanceof Error ? exception.name : 'UnknownError',
+            message:
+              exception instanceof HttpException
+                ? exception.message
+                : exception instanceof Error
+                  ? exception.message
+                  : 'Unknown error occurred',
+            ...(exception instanceof Error && exception.stack && { stack: exception.stack }),
+            ...(exception instanceof HttpException && {
+              response: errorResponse,
+            }),
           };
 
-    const errorInfo: Record<string, unknown> = {
-      name: exception instanceof Error ? exception.name : 'UnknownError',
-      message:
-        exception instanceof HttpException
-          ? exception.message
-          : exception instanceof Error
-            ? exception.message
-            : 'Unknown error occurred',
-      ...(exception instanceof Error && exception.stack && { stack: exception.stack }),
-      ...(exception instanceof HttpException && {
-        response: errorResponse,
-      }),
-    };
-
-    if (exception instanceof Error && exception.cause) {
+    if (exception instanceof Error && exception.cause && !(exception instanceof BaseError)) {
       errorInfo.cause = exception.cause;
     }
 
@@ -80,14 +104,17 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
       timestamp: new Date().toISOString(),
     };
 
-    // Log at appropriate level using Pino logger directly for structured logging
-    const pinoLogger = logger.getPinoLogger().child({ context: 'HttpException' });
-    if (status >= 500) {
-      pinoLogger.error(errorLog, 'HTTP exception (5xx)');
-    } else if (status >= 400) {
-      pinoLogger.warn(errorLog, 'HTTP exception (4xx)');
-    } else {
-      pinoLogger.info(errorLog, 'HTTP exception');
+    // Log at appropriate level - respect custom error's loggable flag
+    const shouldLog = !(exception instanceof BaseError) || exception.loggable;
+    if (shouldLog) {
+      const pinoLogger = logger.getPinoLogger().child({ context: 'HttpException' });
+      if (status >= 500) {
+        pinoLogger.error(errorLog, 'HTTP exception (5xx)');
+      } else if (status >= 400) {
+        pinoLogger.warn(errorLog, 'HTTP exception (4xx)');
+      } else {
+        pinoLogger.info(errorLog, 'HTTP exception');
+      }
     }
 
     response.status(status).json(errorResponse);
@@ -98,33 +125,54 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
     const data = ctx.getData();
     const pattern = ctx.getContext()?.pattern || 'unknown';
 
+    // Build error info for logging - use custom error's toJSON if available
+    const errorInfo: Record<string, unknown> =
+      exception instanceof BaseError
+        ? exception.toJSON()
+        : (() => {
+            const info: Record<string, unknown> = {
+              name: exception instanceof Error ? exception.name : 'UnknownError',
+              message:
+                exception instanceof RpcException
+                  ? exception.getError()
+                  : exception instanceof Error
+                    ? exception.message
+                    : 'Unknown RPC error occurred',
+              ...(exception instanceof Error && exception.stack && { stack: exception.stack }),
+            };
+            if (exception instanceof Error && exception.cause) {
+              info.cause = exception.cause;
+            }
+            return info;
+          })();
+
     const errorLog: Record<string, unknown> = {
       pattern,
       transport: ctx.getContext()?.transport || 'unknown',
       ...(data && { requestData: data }),
-      error: (() => {
-        const errorInfo: Record<string, unknown> = {
-          name: exception instanceof Error ? exception.name : 'UnknownError',
-          message:
-            exception instanceof RpcException
-              ? exception.getError()
-              : exception instanceof Error
-                ? exception.message
-                : 'Unknown RPC error occurred',
-          ...(exception instanceof Error && exception.stack && { stack: exception.stack }),
-        };
-        if (exception instanceof Error && exception.cause) {
-          errorInfo.cause = exception.cause;
-        }
-        return errorInfo;
-      })(),
+      error: errorInfo,
       timestamp: new Date().toISOString(),
     };
 
-    logger.getPinoLogger().child({ context: 'RpcException' }).error(errorLog, 'RPC exception');
+    // Log if error is loggable
+    const shouldLog = !(exception instanceof BaseError) || exception.loggable;
+    if (shouldLog) {
+      logger.getPinoLogger().child({ context: 'RpcException' }).error(errorLog, 'RPC exception');
+    }
+
+    // Return appropriate error format
+    if (exception instanceof RpcError) {
+      return throwError(() => exception.getRpcError());
+    }
 
     if (exception instanceof RpcException) {
       return throwError(() => exception.getError());
+    }
+
+    // For any BaseError (BusinessError, HttpError, etc.) in RPC context,
+    // use getRpcError() which excludes HTTP statusCode
+    if (exception instanceof BaseError) {
+      return throwError(() => exception.getRpcError());
     }
 
     return throwError(() => exception);
@@ -136,50 +184,70 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
     const data = ctx.getData();
     const pattern = ctx.getPattern() || 'unknown';
 
+    // Build error info for logging - use custom error's toJSON if available
+    const errorInfo: Record<string, unknown> =
+      exception instanceof BaseError
+        ? exception.toJSON()
+        : (() => {
+            const info: Record<string, unknown> = {
+              name: exception instanceof Error ? exception.name : 'UnknownError',
+              message:
+                exception instanceof Error ? exception.message : 'Unknown WebSocket error occurred',
+              ...(exception instanceof Error && exception.stack && { stack: exception.stack }),
+            };
+            if (exception instanceof Error && exception.cause) {
+              info.cause = exception.cause;
+            }
+            return info;
+          })();
+
     const errorLog: Record<string, unknown> = {
       event: pattern,
       clientId: (client as { id?: string })?.id,
       ...(data && { messageData: data }),
-      error: (() => {
-        const errorInfo: Record<string, unknown> = {
-          name: exception instanceof Error ? exception.name : 'UnknownError',
-          message:
-            exception instanceof Error ? exception.message : 'Unknown WebSocket error occurred',
-          ...(exception instanceof Error && exception.stack && { stack: exception.stack }),
-        };
-        if (exception instanceof Error && exception.cause) {
-          errorInfo.cause = exception.cause;
-        }
-        return errorInfo;
-      })(),
+      error: errorInfo,
       timestamp: new Date().toISOString(),
     };
 
-    logger
-      .getPinoLogger()
-      .child({ context: 'WebSocketException' })
-      .error(errorLog, 'WebSocket exception');
+    // Log if error is loggable
+    const shouldLog = !(exception instanceof BaseError) || exception.loggable;
+    if (shouldLog) {
+      logger
+        .getPinoLogger()
+        .child({ context: 'WebSocketException' })
+        .error(errorLog, 'WebSocket exception');
+    }
   }
 
   private handleGenericException(exception: unknown, logger: LoggerService) {
+    // Build error info for logging - use custom error's toJSON if available
+    const errorInfo: Record<string, unknown> =
+      exception instanceof BaseError
+        ? exception.toJSON()
+        : (() => {
+            const info: Record<string, unknown> = {
+              name: exception instanceof Error ? exception.name : 'UnknownError',
+              message: exception instanceof Error ? exception.message : 'Unknown error occurred',
+              ...(exception instanceof Error && exception.stack && { stack: exception.stack }),
+            };
+            if (exception instanceof Error && exception.cause) {
+              info.cause = exception.cause;
+            }
+            return info;
+          })();
+
     const errorLog: Record<string, unknown> = {
-      error: (() => {
-        const errorInfo: Record<string, unknown> = {
-          name: exception instanceof Error ? exception.name : 'UnknownError',
-          message: exception instanceof Error ? exception.message : 'Unknown error occurred',
-          ...(exception instanceof Error && exception.stack && { stack: exception.stack }),
-        };
-        if (exception instanceof Error && exception.cause) {
-          errorInfo.cause = exception.cause;
-        }
-        return errorInfo;
-      })(),
+      error: errorInfo,
       timestamp: new Date().toISOString(),
     };
 
-    logger
-      .getPinoLogger()
-      .child({ context: 'UnhandledException' })
-      .error(errorLog, 'Unhandled exception');
+    // Log if error is loggable
+    const shouldLog = !(exception instanceof BaseError) || exception.loggable;
+    if (shouldLog) {
+      logger
+        .getPinoLogger()
+        .child({ context: 'UnhandledException' })
+        .error(errorLog, 'Unhandled exception');
+    }
   }
 }
