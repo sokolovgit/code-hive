@@ -18,7 +18,7 @@ export interface BullBoardQueueConfig {
 
 export interface BullBoardModuleOptions {
   /**
-   * Base path for the BullBoard UI (e.g., 'admin/queues')
+   * Base path for the BullBoard UI (e.g., 'queues')
    * @default 'admin/queues'
    */
   path?: string;
@@ -52,7 +52,7 @@ export class BullBoardModule {
    * This should be called in your main.ts after app initialization
    */
   static setup(app: INestApplication, options: BullBoardModuleOptions): void {
-    const bullBoardPath = options.path || 'admin/queues';
+    const bullBoardPath = options.path || 'queues';
     const serverAdapter = new ExpressAdapter();
 
     serverAdapter.setBasePath(`/${bullBoardPath}`);

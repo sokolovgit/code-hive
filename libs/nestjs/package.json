@@ -6,10 +6,6 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    },
     "./config": {
       "types": "./dist/config/index.d.ts",
       "default": "./dist/config/index.js"
@@ -21,6 +17,10 @@
     "./bullboard": {
       "types": "./dist/bullboard/index.d.ts",
       "default": "./dist/bullboard/index.js"
+    },
+    "./swagger": {
+      "types": "./dist/swagger/index.d.ts",
+      "default": "./dist/swagger/index.js"
     }
   },
   "scripts": {
@@ -31,6 +31,7 @@
     "@bull-board/api": "^6.0.0",
     "@bull-board/express": "^6.0.0",
     "@nestjs/common": "^11.1.9",
+    "@nestjs/swagger": "^8.0.0",
     "bullmq": "^5.66.1",
     "dotenv": "^17.2.3",
     "dotenv-expand": "^12.0.3",
