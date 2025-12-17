@@ -17,6 +17,10 @@
     "./enums": {
       "types": "./dist/enums/index.d.ts",
       "default": "./dist/enums/index.js"
+    },
+    "./bullboard": {
+      "types": "./dist/bullboard/index.d.ts",
+      "default": "./dist/bullboard/index.js"
     }
   },
   "scripts": {
@@ -24,7 +28,10 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@bull-board/api": "^6.0.0",
+    "@bull-board/express": "^6.0.0",
     "@nestjs/common": "^11.1.9",
+    "bullmq": "^5.66.1",
     "dotenv": "^17.2.3",
     "dotenv-expand": "^12.0.3",
     "zod": "^4.2.1"
