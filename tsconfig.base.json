@@ -16,8 +16,8 @@
     "paths": {
       "@code-hive/users-service": ["apps/services/users/src/index.ts"],
       "@code-hive/users-service/*": ["apps/services/users/src/*"],
-      "@code-hive/nestjs-common": ["libs/nestjs/common/src/index.ts"],
-      "@code-hive/nestjs-common/*": ["libs/nestjs/common/src/*"],
+      "@code-hive/nestjs": ["libs/nestjs/src/index.ts"],
+      "@code-hive/nestjs/*": ["libs/nestjs/src/*"],
       "@code-hive/types": ["libs/types/src/index.ts"],
       "@code-hive/types/*": ["libs/types/src/*"]
     }
