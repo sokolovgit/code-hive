@@ -1,34 +1,15 @@
-import {
-  LoggerService,
-  HttpLoggingInterceptor,
-  ExceptionLoggingFilter,
-} from '@code-hive/nestjs/logger';
+import { loadEnv } from '@code-hive/nestjs/config';
+loadEnv();
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 
 import { AppModule } from './app.module';
+import { ConfigService } from './config/config.service';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const config = app.get(ConfigService);
 
-  // Get logger service instance
-  const loggerService = app.get(LoggerService);
-
-  // Global exception filter - handles all errors and logs them
-  app.useGlobalFilters(new ExceptionLoggingFilter(loggerService));
-  // HTTP logging interceptor - logs all HTTP requests/responses
-
-  app.useGlobalInterceptors(
-    new HttpLoggingInterceptor(loggerService, {
-      logRequestBody: true,
-      logResponseBody: false,
-      logQuery: true,
-      logHeaders: false,
-      skipPaths: ['/health', '/metrics'],
-    })
-  );
-
-  // Global validation pipe
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -40,21 +21,12 @@ async function bootstrap() {
     })
   );
 
-  // CORS configuration
-  app.enableCors({
-    origin: process.env.CORS_ORIGIN || '*',
-    credentials: true,
-  });
-
   // API prefix
   const globalPrefix = 'api/v1';
   app.setGlobalPrefix(globalPrefix);
 
-  const port = process.env.PORT || 3001;
-  await app.listen(port);
-
-  loggerService.log(`🚀 Users service is running on: http://localhost:${port}/${globalPrefix}`);
-  loggerService.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
+  const { port, host } = config.server;
+  await app.listen(port, host);
 }
 
 bootstrap();

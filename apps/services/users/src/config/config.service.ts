@@ -24,4 +24,8 @@ export class ConfigService extends BaseConfigService<EnvType> {
   isDevelopment(): boolean {
     return this.server.env === Environments.DEVELOPMENT;
   }
+
+  getAppName(): string {
+    return `${this.env.npm_package_name}:${this.env.npm_package_version}`;
+  }
 }
