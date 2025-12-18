@@ -1,7 +1,7 @@
 import js from '@eslint/js';
 import tseslint from '@typescript-eslint/eslint-plugin';
 import tsparser from '@typescript-eslint/parser';
-import prettier from 'eslint-config-prettier';
+import eslintPluginPrettierRecommended from 'eslint-plugin-prettier/recommended';
 import importPlugin from 'eslint-plugin-import';
 
 export default [
@@ -11,8 +11,8 @@ export default [
       'dist/**',
       'build/**',
       '.next/**',
+      '.turbo/**',
       'coverage/**',
-      '**/webpack.config.js',
       '**/*.config.js',
       '**/*.config.cjs',
       '**/*.config.mjs',
@@ -21,21 +21,13 @@ export default [
   js.configs.recommended,
   ...tseslint.configs['flat/recommended'],
   {
-    files: ['*.ts', '*.tsx', '*.js', '*.jsx'],
+    files: ['**/*.ts', '**/*.tsx', '**/*.js', '**/*.jsx'],
     languageOptions: {
-      ecmaVersion: 2022,
+      ecmaVersion: 'latest',
       sourceType: 'module',
     },
     plugins: {
       import: importPlugin,
-    },
-    settings: {
-      'import/resolver': {
-        typescript: {
-          alwaysTryTypes: true,
-          project: './tsconfig.base.json',
-        },
-      },
     },
     rules: {
       'import/order': [
@@ -52,12 +44,9 @@ export default [
     },
   },
   {
-    files: ['*.ts', '*.tsx'],
+    files: ['**/*.ts', '**/*.tsx'],
     languageOptions: {
       parser: tsparser,
-      parserOptions: {
-        project: ['./tsconfig.base.json'],
-      },
     },
     plugins: {
       '@typescript-eslint': tseslint,
@@ -69,9 +58,9 @@ export default [
     },
   },
   {
-    files: ['*.js', '*.jsx'],
+    files: ['**/*.js', '**/*.jsx'],
     languageOptions: {
-      ecmaVersion: 2022,
+      ecmaVersion: 'latest',
       sourceType: 'module',
       globals: {
         module: 'readonly',
@@ -83,6 +72,7 @@ export default [
       },
     },
   },
-  prettier,
+  // Run Prettier as an ESLint rule (prettier/prettier) and disable conflicting stylistic rules.
+  eslintPluginPrettierRecommended,
 ];
 

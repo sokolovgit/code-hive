@@ -3,7 +3,6 @@ import baseConfig from '../../../eslint.config.mjs';
 export default [
   {
     ignores: [
-      'webpack.config.js',
       'jest.config.*',
       '*.config.js',
       '*.config.cjs',
@@ -12,9 +11,19 @@ export default [
   },
   ...baseConfig,
   {
-    files: ['**/*.ts'],
-    rules: {
-      // Service-specific ESLint rules can be added here
+    files: ['**/*.ts', '**/*.tsx'],
+    settings: {
+      'import/resolver': {
+        typescript: {
+          alwaysTryTypes: true,
+          project: ['./tsconfig.app.json'],
+        },
+      },
+    },
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.app.json'],
+      },
     },
   },
 ];
