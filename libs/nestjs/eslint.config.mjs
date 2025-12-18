@@ -6,12 +6,18 @@ export default [
   },
   ...baseConfig,
   {
-    files: ['*.ts', '*.tsx'],
+    files: ['**/*.ts', '**/*.tsx'],
+    settings: {
+      'import/resolver': {
+        typescript: {
+          alwaysTryTypes: true,
+          project: ['./tsconfig.json'],
+        },
+      },
+    },
     languageOptions: {
       parserOptions: {
         project: ['./tsconfig.json'],
-        experimentalDecorators: true,
-        emitDecoratorMetadata: true,
       },
     },
   },

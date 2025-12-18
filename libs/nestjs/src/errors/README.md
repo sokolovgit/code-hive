@@ -1,23 +1,23 @@
 # Errors Module
 
-Comprehensive custom error classes for structured error handling across HTTP, RPC, and WebSocket contexts.
+Single custom error class for structured error handling across HTTP, RPC, and WebSocket contexts.
 
 ## How It Works Across Contexts
 
 ### Example: Service Used by Both HTTP and RPC
 
-When you throw a `BusinessError` (or any `BaseError`) in a service that's used by both HTTP controllers and RPC handlers, the `ExceptionLoggingFilter` automatically adapts the error response based on the context:
+When you throw a `BaseError` in a service that's used by both HTTP controllers and RPC handlers, the `ExceptionLoggingFilter` automatically adapts the error response based on the context:
 
 ```typescript
 import { Injectable } from '@nestjs/common';
-import { BusinessError } from '@code-hive/nestjs/errors';
+import { BaseError } from '@code-hive/nestjs/errors';
 
 @Injectable()
 export class PaymentService {
   async processPayment(amount: number, accountId: string) {
     if (amount <= 0) {
       // This same error works for both HTTP and RPC!
-      throw new BusinessError('Invalid payment amount', 'INVALID_AMOUNT', {
+      throw new BaseError('Invalid payment amount', 'INVALID_AMOUNT', {
         metadata: { amount, accountId },
       });
     }
@@ -38,7 +38,7 @@ export class PaymentsController {
 
   @Post()
   async createPayment(@Body() dto: CreatePaymentDto) {
-    // If BusinessError is thrown here:
+    // If BaseError is thrown here:
     return await this.paymentService.processPayment(dto.amount, dto.accountId);
   }
 }
@@ -68,7 +68,7 @@ export class PaymentRpcHandler {
   constructor(private readonly paymentService: PaymentService) {}
 
   async handle(data: { amount: number; accountId: string }) {
-    // If BusinessError is thrown here:
+    // If BaseError is thrown here:
     return await this.paymentService.processPayment(data.amount, data.accountId);
   }
 }
@@ -89,7 +89,7 @@ export class PaymentRpcHandler {
 
 Notice that:
 
-- ✅ **HTTP context**: Includes `statusCode: 400` (from BusinessError default)
+- ✅ **HTTP context**: Includes `statusCode` if you set it (e.g. 400)
 - ✅ **RPC context**: Excludes `statusCode` (not relevant for RPC)
 - ✅ **Same error class**: Works seamlessly in both contexts
 - ✅ **Consistent metadata**: Same error information in both contexts
@@ -98,7 +98,7 @@ Notice that:
 
 ### HTTP Flow
 
-1. **Service throws error** → `BusinessError` with `statusCode: 400`
+1. **Service throws error** → `BaseError` (optionally with `statusCode` for HTTP)
 2. **ExceptionLoggingFilter catches it** → Detects HTTP context
 3. **Uses `getClientSafeError()`** → Includes statusCode for HTTP response
 4. **Logs using `toJSON()`** → Full error details for logging
@@ -106,40 +106,41 @@ Notice that:
 
 ### RPC Flow
 
-1. **Service throws error** → `BusinessError` with `statusCode: 400`
+1. **Service throws error** → `BaseError`
 2. **ExceptionLoggingFilter catches it** → Detects RPC context
 3. **Uses `getRpcError()`** → Excludes statusCode (not needed for RPC)
 4. **Logs using `toJSON()`** → Full error details for logging
 5. **Returns RPC error** → JSON without statusCode
 
-## Error Types and Context Behavior
+## Transport Recognition (HTTP vs RPC vs WS)
 
-| Error Type      | HTTP Status   | RPC Format                  | Notes                               |
-| --------------- | ------------- | --------------------------- | ----------------------------------- |
-| `BusinessError` | 400 (default) | `{code, message, metadata}` | Works in both contexts              |
-| `HttpError`     | Custom        | `{code, message, metadata}` | Designed for HTTP, works in RPC too |
-| `RpcError`      | N/A           | `{code, message, metadata}` | Has `rpcCode` property              |
-| `DataError`     | 400 (default) | `{code, message, metadata}` | Includes `field` property           |
-| `AuthError`     | 401 (default) | `{code, message, metadata}` | Security-focused                    |
-| `ExternalError` | 502 (default) | `{code, message, metadata}` | Not exposed to clients by default   |
+`BaseError` includes a `transport` discriminator:
+
+- `transport: 'http'` - intended for HTTP mapping (often paired with `statusCode`)
+- `transport: 'rpc'` - intended for microservices/RPC mapping
+- `transport: 'ws'` - intended for WebSocket mapping
+- `transport: 'unknown'` - default when not specified
 
 ## Best Practices
 
-### 1. Use Appropriate Error Types
+### 1. Use Appropriate Transport + Status Code When Needed
 
 ```typescript
-// ✅ Good - Business logic error
+import { BaseError } from '@code-hive/nestjs/errors';
+
+// ✅ Good - business logic error (HTTP)
 if (balance < amount) {
-  throw new BusinessError('Insufficient funds', 'INSUFFICIENT_FUNDS', {
+  throw new BaseError('Insufficient funds', 'INSUFFICIENT_FUNDS', {
+    transport: 'http',
+    statusCode: 400,
     metadata: { balance, amount },
   });
 }
 
-// ✅ Good - Data validation error
+// ✅ Good - data validation error
 if (!email.includes('@')) {
-  throw new DataError('Invalid email', 'INVALID_EMAIL', {
-    field: 'email',
-    metadata: { value: email },
+  throw new BaseError('Invalid email', 'INVALID_EMAIL', {
+    metadata: { field: 'email', value: email },
   });
 }
 ```
@@ -148,7 +149,7 @@ if (!email.includes('@')) {
 
 ```typescript
 // ✅ Good - Rich context
-throw new BusinessError('Order limit exceeded', 'ORDER_LIMIT_EXCEEDED', {
+throw new BaseError('Order limit exceeded', 'ORDER_LIMIT_EXCEEDED', {
   metadata: {
     userId: user.id,
     currentOrders: 10,
@@ -162,7 +163,7 @@ throw new BusinessError('Order limit exceeded', 'ORDER_LIMIT_EXCEEDED', {
 
 ```typescript
 // ✅ Good - Don't log expected business errors
-throw new BusinessError('Item out of stock', 'OUT_OF_STOCK', {
+throw new BaseError('Item out of stock', 'OUT_OF_STOCK', {
   loggable: false, // Expected error, no need to log
   exposeToClient: true,
 });
@@ -172,9 +173,9 @@ throw new BusinessError('Item out of stock', 'OUT_OF_STOCK', {
 
 ```typescript
 // ✅ Good - Hide internal details
-throw new ExternalError('Payment gateway failed', 'PAYMENT_GATEWAY_ERROR', {
-  serviceName: 'stripe',
-  originalError: gatewayError,
+throw new BaseError('Payment gateway failed', 'PAYMENT_GATEWAY_ERROR', {
+  transport: 'http',
+  statusCode: 502,
   exposeToClient: false, // Don't expose to clients
   loggable: true, // But do log it
 });
@@ -197,8 +198,9 @@ Returns full error details including stack trace:
 
 ```typescript
 {
-  name: "BusinessError",
+  name: "BaseError",
   code: "INVALID_AMOUNT",
+  transport: "unknown",
   message: "Invalid payment amount",
   statusCode: 400,
   metadata: { amount: 0 },

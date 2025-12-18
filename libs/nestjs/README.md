@@ -11,7 +11,7 @@ Import from specific subpaths for better tree-shaking:
 import { BullBoardModule } from '@code-hive/nestjs/bullboard';
 import { ConfigModule } from '@code-hive/nestjs/config';
 import { SwaggerModule } from '@code-hive/nestjs/swagger';
-import { BaseError, BusinessError, HttpError } from '@code-hive/nestjs/errors';
+import { BaseError } from '@code-hive/nestjs/errors';
 import { MyDecorator } from '@code-hive/nestjs/decorators';
 import { MyGuard } from '@code-hive/nestjs/guards';
 import { MyInterceptor } from '@code-hive/nestjs/interceptors';
@@ -187,7 +187,7 @@ The Errors module provides a comprehensive set of custom error classes for struc
 ### Features
 
 - ✅ **Base error class** - Common error properties and methods
-- ✅ **Specialized error types** - HTTP, RPC, Business, Data, Auth, and External errors
+- ✅ **Transport recognition** - Mark errors as HTTP vs RPC vs WS via `transport`
 - ✅ **Automatic logging integration** - Works seamlessly with `ExceptionLoggingFilter`
 - ✅ **Client-safe error responses** - Control what gets exposed to clients
 - ✅ **Metadata support** - Attach additional context to errors
@@ -198,6 +198,7 @@ The Errors module provides a comprehensive set of custom error classes for struc
 All custom errors extend `BaseError`, which provides:
 
 - `code` - Programmatic error identifier
+- `transport` - `'http' | 'rpc' | 'ws' | 'unknown'`
 - `statusCode` - HTTP status code (optional)
 - `metadata` - Additional context data
 - `timestamp` - When the error was created
@@ -206,82 +207,24 @@ All custom errors extend `BaseError`, which provides:
 - `toJSON()` - Serialize error for logging
 - `getClientSafeError()` - Get safe error response for clients
 
-### Error Types
+### Creating Errors
 
-#### HttpError
-
-For HTTP-specific errors with status codes.
+Use `BaseError` for all cases. Set `transport` when you want to explicitly tag the intended mapping (HTTP vs RPC vs WS), and set `statusCode` when you want a specific HTTP status.
 
 ```typescript
-import { HttpError } from '@code-hive/nestjs/errors';
+import { BaseError } from '@code-hive/nestjs/errors';
 
-throw new HttpError('Resource not found', 404, {
-  code: 'RESOURCE_NOT_FOUND',
+// HTTP-shaped error
+throw new BaseError('Resource not found', 'RESOURCE_NOT_FOUND', {
+  transport: 'http',
+  statusCode: 404,
   metadata: { resourceId: '123', resourceType: 'user' },
 });
-```
 
-#### RpcError
-
-For microservices RPC communication errors.
-
-```typescript
-import { RpcError } from '@code-hive/nestjs/errors';
-
-throw new RpcError('Service unavailable', 'SERVICE_UNAVAILABLE', {
-  rpcCode: 'UNAVAILABLE',
+// RPC-shaped error
+throw new BaseError('Service unavailable', 'SERVICE_UNAVAILABLE', {
+  transport: 'rpc',
   metadata: { serviceName: 'payment-service' },
-});
-```
-
-#### BusinessError
-
-For business logic violations (default: 400 status, less logging).
-
-```typescript
-import { BusinessError } from '@code-hive/nestjs/errors';
-
-throw new BusinessError('Insufficient funds', 'INSUFFICIENT_FUNDS', {
-  metadata: { accountId: '123', balance: 50, required: 100 },
-});
-```
-
-#### DataError
-
-For data validation and integrity errors (includes `field` property).
-
-```typescript
-import { DataError } from '@code-hive/nestjs/errors';
-
-throw new DataError('Invalid email format', 'INVALID_EMAIL', {
-  field: 'email',
-  metadata: { value: 'invalid-email' },
-});
-```
-
-#### AuthError
-
-For authentication and authorization errors (default: 401 status, logged for security).
-
-```typescript
-import { AuthError } from '@code-hive/nestjs/errors';
-
-throw new AuthError('Invalid token', 'INVALID_TOKEN', {
-  metadata: { tokenType: 'bearer' },
-});
-```
-
-#### ExternalError
-
-For third-party service errors (default: 502 status, not exposed to clients).
-
-```typescript
-import { ExternalError } from '@code-hive/nestjs/errors';
-
-throw new ExternalError('Payment gateway error', 'PAYMENT_GATEWAY_ERROR', {
-  serviceName: 'stripe',
-  originalError: gatewayError,
-  metadata: { transactionId: 'txn_123' },
 });
 ```
 
@@ -290,19 +233,20 @@ throw new ExternalError('Payment gateway error', 'PAYMENT_GATEWAY_ERROR', {
 #### Basic Usage
 
 ```typescript
-import { BusinessError, HttpError } from '@code-hive/nestjs/errors';
+import { BaseError } from '@code-hive/nestjs/errors';
 
 @Injectable()
 export class UsersService {
   async findUser(id: string) {
     if (!id) {
-      throw new BusinessError('User ID is required', 'USER_ID_REQUIRED');
+      throw new BaseError('User ID is required', 'USER_ID_REQUIRED', { statusCode: 400 });
     }
 
     const user = await this.repository.findOne(id);
     if (!user) {
-      throw new HttpError('User not found', 404, {
-        code: 'USER_NOT_FOUND',
+      throw new BaseError('User not found', 'USER_NOT_FOUND', {
+        transport: 'http',
+        statusCode: 404,
         metadata: { userId: id },
       });
     }
@@ -315,12 +259,12 @@ export class UsersService {
 #### With Metadata
 
 ```typescript
-import { DataError } from '@code-hive/nestjs/errors';
+import { BaseError } from '@code-hive/nestjs/errors';
 
 async validateEmail(email: string) {
   if (!email.includes('@')) {
-    throw new DataError('Invalid email format', 'INVALID_EMAIL_FORMAT', {
-      field: 'email',
+    throw new BaseError('Invalid email format', 'INVALID_EMAIL_FORMAT', {
+      statusCode: 400,
       metadata: {
         value: email,
         reason: 'missing @ symbol',
@@ -333,16 +277,16 @@ async validateEmail(email: string) {
 #### Controlling Logging and Exposure
 
 ```typescript
-import { BusinessError } from '@code-hive/nestjs/errors';
+import { BaseError } from '@code-hive/nestjs/errors';
 
 // Don't log expected business errors
-throw new BusinessError('Item out of stock', 'OUT_OF_STOCK', {
+throw new BaseError('Item out of stock', 'OUT_OF_STOCK', {
   loggable: false,
   exposeToClient: true,
 });
 
 // Don't expose internal details to clients
-throw new BusinessError('Database connection failed', 'DB_ERROR', {
+throw new BaseError('Database connection failed', 'DB_ERROR', {
   loggable: true,
   exposeToClient: false,
   metadata: { connectionString: 'internal-db-url' }, // Only in logs
@@ -377,12 +321,12 @@ When using custom errors with the `ExceptionLoggingFilter`, HTTP responses follo
 
 ### Best Practices
 
-1. **Use appropriate error types** - Choose the right error class for your use case
+1. **Use `transport` when you need explicit mapping** - `'http' | 'rpc' | 'ws'`
 2. **Include error codes** - Always provide meaningful error codes for programmatic handling
 3. **Add metadata** - Include relevant context in the metadata field
 4. **Control exposure** - Use `exposeToClient: false` for internal errors
 5. **Control logging** - Set `loggable: false` for expected business errors
-6. **Use field property** - For validation errors, use `DataError` with the `field` property
+6. **Put validation details in metadata** - e.g. `metadata: { field: 'email', value }`
 
 ## Development
 

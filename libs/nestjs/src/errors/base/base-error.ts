@@ -2,11 +2,19 @@
  * Base error class for all custom errors in the application.
  * Provides common properties and methods for error handling.
  */
-export abstract class BaseError extends Error {
+export type ErrorTransport = 'http' | 'rpc' | 'ws' | 'unknown';
+
+export class BaseError extends Error {
   /**
    * Error code for programmatic error identification
    */
   public readonly code: string;
+
+  /**
+   * Transport/context where this error is intended to be handled.
+   * Useful to distinguish HTTP vs RPC vs WS error mapping.
+   */
+  public readonly transport: ErrorTransport;
 
   /**
    * HTTP status code (if applicable)
@@ -37,6 +45,7 @@ export abstract class BaseError extends Error {
     message: string,
     code: string,
     options?: {
+      transport?: ErrorTransport;
       statusCode?: number;
       metadata?: Record<string, unknown>;
       cause?: Error;
@@ -48,6 +57,7 @@ export abstract class BaseError extends Error {
 
     this.name = this.constructor.name;
     this.code = code;
+    this.transport = options?.transport ?? 'unknown';
     this.statusCode = options?.statusCode;
     this.metadata = options?.metadata;
     this.timestamp = new Date();
@@ -67,6 +77,7 @@ export abstract class BaseError extends Error {
     const result: Record<string, unknown> = {
       name: this.name,
       code: this.code,
+      transport: this.transport,
       message: this.message,
       statusCode: this.statusCode,
       metadata: this.metadata,

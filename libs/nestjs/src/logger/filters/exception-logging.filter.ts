@@ -6,11 +6,12 @@ import {
   HttpStatus,
   Inject,
 } from '@nestjs/common';
-import { Request, Response } from 'express';
 import { RpcException } from '@nestjs/microservices';
+import { Request, Response } from 'express';
 import { throwError } from 'rxjs';
+
+import { BaseError } from '../../errors';
 import { LoggerService } from '../logger.service';
-import { BaseError, RpcError } from '../../errors';
 
 @Catch()
 export class ExceptionLoggingFilter implements ExceptionFilter {
@@ -161,15 +162,11 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
     }
 
     // Return appropriate error format
-    if (exception instanceof RpcError) {
-      return throwError(() => exception.getRpcError());
-    }
-
     if (exception instanceof RpcException) {
       return throwError(() => exception.getError());
     }
 
-    // For any BaseError (BusinessError, HttpError, etc.) in RPC context,
+    // For any BaseError in RPC context,
     // use getRpcError() which excludes HTTP statusCode
     if (exception instanceof BaseError) {
       return throwError(() => exception.getRpcError());

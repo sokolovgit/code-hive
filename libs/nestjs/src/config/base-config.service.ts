@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+
 import { ENV } from './config.module';
 
 export type EnvType = Record<string, unknown>;

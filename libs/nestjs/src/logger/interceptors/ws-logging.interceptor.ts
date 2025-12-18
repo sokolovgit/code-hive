@@ -1,9 +1,10 @@
 import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common';
+import { Inject, Optional } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { tap, catchError } from 'rxjs/operators';
-import { LoggerService } from '../logger.service';
-import { Inject, Optional } from '@nestjs/common';
+
 import { loggerContext } from '../logger.context';
+import { LoggerService } from '../logger.service';
 
 export interface WebSocketLoggingInterceptorOptions {
   /**

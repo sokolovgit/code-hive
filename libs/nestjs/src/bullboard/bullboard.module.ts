@@ -1,9 +1,9 @@
-import { DynamicModule, Module } from '@nestjs/common';
-import { INestApplication } from '@nestjs/common';
-import { Queue } from 'bullmq';
 import { createBullBoard } from '@bull-board/api';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { ExpressAdapter } from '@bull-board/express';
+import { DynamicModule, Module } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
+import { Queue } from 'bullmq';
 
 export interface BullBoardQueueConfig {
   name: string;
