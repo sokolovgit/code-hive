@@ -5,6 +5,7 @@ import {
   LoggerModule,
   LoggerService,
 } from '@code-hive/nestjs/logger';
+import { SwaggerModule } from '@code-hive/nestjs/swagger';
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 
@@ -19,24 +20,20 @@ import { validationSchema } from './config/env.schema';
     }),
     LoggerModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        environment: config.server.env,
-        appName: config.getAppName(),
-      }),
+      useFactory: (config: ConfigService) => config.getLoggerOptions(),
+    }),
+    SwaggerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => config.getSwaggerOptions(),
     }),
   ],
   controllers: [],
   providers: [
     {
       provide: APP_INTERCEPTOR,
-      useFactory: (logger: LoggerService) =>
-        new HttpLoggingInterceptor(logger, {
-          logRequestBody: true,
-          logResponseBody: true,
-          logQuery: true,
-          logHeaders: true,
-        }),
-      inject: [LoggerService],
+      useFactory: (logger: LoggerService, config: ConfigService) =>
+        new HttpLoggingInterceptor(logger, config.getHttpLoggingInterceptorOptions()),
+      inject: [LoggerService, ConfigService],
     },
     {
       provide: APP_FILTER,

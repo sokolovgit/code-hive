@@ -1,6 +1,9 @@
-import { DynamicModule, Module } from '@nestjs/common';
-import { INestApplication } from '@nestjs/common';
+import { DynamicModule, INestApplication, Module, Provider, Type } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule as NestSwaggerModule } from '@nestjs/swagger';
+
+import { SWAGGER_OPTIONS } from './swagger.constants';
+
+import type { ModuleMetadata } from '@nestjs/common/interfaces';
 
 export interface SwaggerAuthConfig {
   /**
@@ -52,18 +55,49 @@ export interface SwaggerModuleOptions {
   };
 }
 
+export interface SwaggerModuleAsyncOptions<TFactoryArgs extends unknown[] = unknown[]> extends Pick<
+  ModuleMetadata,
+  'imports'
+> {
+  /**
+   * Dependencies to inject into `useFactory` (e.g. `ConfigService`)
+   */
+  inject?: { [K in keyof TFactoryArgs]: Type<TFactoryArgs[K]> | string | symbol };
+  /**
+   * Factory returning the `SwaggerModuleOptions` (sync or async)
+   */
+  useFactory: (...args: TFactoryArgs) => SwaggerModuleOptions | Promise<SwaggerModuleOptions>;
+}
+
 @Module({})
 export class SwaggerModule {
   static forRoot(options: SwaggerModuleOptions): DynamicModule {
+    const swaggerOptionsProvider: Provider = {
+      provide: SWAGGER_OPTIONS,
+      useValue: options,
+    };
+
     return {
       module: SwaggerModule,
-      providers: [
-        {
-          provide: 'SWAGGER_OPTIONS',
-          useValue: options,
-        },
-      ],
-      exports: ['SWAGGER_OPTIONS'],
+      providers: [swaggerOptionsProvider],
+      exports: [SWAGGER_OPTIONS],
+    };
+  }
+
+  static forRootAsync<TFactoryArgs extends unknown[] = unknown[]>(
+    options: SwaggerModuleAsyncOptions<TFactoryArgs>
+  ): DynamicModule {
+    const swaggerOptionsProvider: Provider = {
+      provide: SWAGGER_OPTIONS,
+      useFactory: options.useFactory,
+      inject: (options.inject ?? []) as Array<Type<unknown> | string | symbol>,
+    };
+
+    return {
+      module: SwaggerModule,
+      imports: options.imports ?? [],
+      providers: [swaggerOptionsProvider],
+      exports: [SWAGGER_OPTIONS],
     };
   }
 

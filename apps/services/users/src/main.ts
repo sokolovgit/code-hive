@@ -1,5 +1,6 @@
 import { loadEnv } from '@code-hive/nestjs/config';
 loadEnv();
+import { SwaggerModule } from '@code-hive/nestjs/swagger';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 
@@ -22,8 +23,13 @@ async function bootstrap() {
   );
 
   // API prefix
-  const globalPrefix = 'api/v1';
-  app.setGlobalPrefix(globalPrefix);
+  // const globalPrefix = 'api/v1';
+  // app.setGlobalPrefix(globalPrefix);
+
+  const isDocsEnabled = config.docs.enabled;
+  if (isDocsEnabled) {
+    SwaggerModule.setup(app, config.getSwaggerOptions());
+  }
 
   const { port, host } = config.server;
   await app.listen(port, host);

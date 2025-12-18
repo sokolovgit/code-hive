@@ -1,5 +1,7 @@
 import { BaseConfigService } from '@code-hive/nestjs/config';
 import { Environments } from '@code-hive/nestjs/enums';
+import { HttpLoggingInterceptorOptions, LoggerModuleOptions } from '@code-hive/nestjs/logger';
+import { SwaggerModuleOptions } from '@code-hive/nestjs/swagger';
 import { Injectable } from '@nestjs/common';
 
 import { EnvType } from './env.schema';
@@ -10,6 +12,11 @@ export class ConfigService extends BaseConfigService<EnvType> {
     port: this.env.PORT,
     host: this.env.HOST,
     env: this.env.NODE_ENV,
+  };
+
+  package = {
+    name: this.env.npm_package_name,
+    version: this.env.npm_package_version,
   };
 
   docs = {
@@ -26,6 +33,36 @@ export class ConfigService extends BaseConfigService<EnvType> {
   }
 
   getAppName(): string {
-    return `${this.env.npm_package_name}:${this.env.npm_package_version}`;
+    const { name, version } = this.package;
+    return `${name} v${version}`;
+  }
+
+  getLoggerOptions(): LoggerModuleOptions {
+    return {
+      environment: this.server.env,
+      appName: this.getAppName(),
+    };
+  }
+
+  getSwaggerOptions(): SwaggerModuleOptions {
+    return {
+      title: this.getAppName(),
+      description: this.getSwaggerDescription(),
+      version: this.package.version,
+      path: this.docs.path,
+    };
+  }
+
+  getHttpLoggingInterceptorOptions(): HttpLoggingInterceptorOptions {
+    return {
+      logRequestBody: true,
+      logResponseBody: true,
+      logQuery: true,
+      logHeaders: true,
+    };
+  }
+
+  private getSwaggerDescription(): string {
+    return `API documentation for the ${this.package.name} service`;
   }
 }
