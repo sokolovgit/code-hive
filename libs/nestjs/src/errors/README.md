@@ -114,16 +114,14 @@ Notice that:
 
 ## Transport Recognition (HTTP vs RPC vs WS)
 
-`BaseError` includes a `transport` discriminator:
+`BaseError` includes a `transport` discriminator, which is **automatically detected** by the `ExceptionLoggingFilter` (based on Nest context).
 
-- `transport: 'http'` - intended for HTTP mapping (often paired with `statusCode`)
-- `transport: 'rpc'` - intended for microservices/RPC mapping
-- `transport: 'ws'` - intended for WebSocket mapping
-- `transport: 'unknown'` - default when not specified
+- `'http' | 'rpc' | 'ws'` - set by the runtime when the error is handled
+- `'unknown'` - default if the error hasn't been handled yet
 
 ## Best Practices
 
-### 1. Use Appropriate Transport + Status Code When Needed
+### 1. Use Appropriate Status Code When Needed
 
 ```typescript
 import { BaseError } from '@code-hive/nestjs/errors';
@@ -131,7 +129,6 @@ import { BaseError } from '@code-hive/nestjs/errors';
 // ✅ Good - business logic error (HTTP)
 if (balance < amount) {
   throw new BaseError('Insufficient funds', 'INSUFFICIENT_FUNDS', {
-    transport: 'http',
     statusCode: 400,
     metadata: { balance, amount },
   });
@@ -174,7 +171,6 @@ throw new BaseError('Item out of stock', 'OUT_OF_STOCK', {
 ```typescript
 // ✅ Good - Hide internal details
 throw new BaseError('Payment gateway failed', 'PAYMENT_GATEWAY_ERROR', {
-  transport: 'http',
   statusCode: 502,
   exposeToClient: false, // Don't expose to clients
   loggable: true, // But do log it

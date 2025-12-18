@@ -19,8 +19,8 @@ export class ConfigModule {
     const parsed = validationSchema.safeParse(process.env);
     if (!parsed.success) {
       const issues = parsed.error.issues
-        .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
-        .join(', ');
+        .map((issue) => `${issue.path.join('.')}: ${issue.message}. Value: ${issue.input}`)
+        .join('\n');
 
       throw new Error(`Env validation error: ${issues}`);
     }

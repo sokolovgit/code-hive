@@ -50,7 +50,7 @@ export class LoggerService implements NestLoggerService {
   private createLogger(): PinoLogger {
     const {
       environment = (process.env.NODE_ENV as Environments) || Environments.DEVELOPMENT,
-      appName = process.env.APP_NAME || 'nestjs-app',
+      appName = this.options.appName || process.env.APP_NAME || 'nestjs-app',
       level,
       prettyPrint,
       pinoOptions = {},

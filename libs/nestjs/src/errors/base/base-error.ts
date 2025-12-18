@@ -11,10 +11,14 @@ export class BaseError extends Error {
   public readonly code: string;
 
   /**
-   * Transport/context where this error is intended to be handled.
-   * Useful to distinguish HTTP vs RPC vs WS error mapping.
+   * Transport/context where this error was handled.
+   * This is auto-detected (HTTP/RPC/WS) by the Nest exception filter; callers should not set it.
    */
-  public readonly transport: ErrorTransport;
+  private _transport: ErrorTransport = 'unknown';
+
+  get transport(): ErrorTransport {
+    return this._transport;
+  }
 
   /**
    * HTTP status code (if applicable)
@@ -45,7 +49,6 @@ export class BaseError extends Error {
     message: string,
     code: string,
     options?: {
-      transport?: ErrorTransport;
       statusCode?: number;
       metadata?: Record<string, unknown>;
       cause?: Error;
@@ -57,7 +60,6 @@ export class BaseError extends Error {
 
     this.name = this.constructor.name;
     this.code = code;
-    this.transport = options?.transport ?? 'unknown';
     this.statusCode = options?.statusCode;
     this.metadata = options?.metadata;
     this.timestamp = new Date();
@@ -67,6 +69,16 @@ export class BaseError extends Error {
     // Maintains proper stack trace for where our error was thrown (only available on V8)
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, this.constructor);
+    }
+  }
+
+  /**
+   * INTERNAL: set transport context once (used by exception filters).
+   * Callers should not set transport manually.
+   */
+  setTransportIfUnset(transport: Exclude<ErrorTransport, 'unknown'>): void {
+    if (this._transport === 'unknown') {
+      this._transport = transport;
     }
   }
 

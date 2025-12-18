@@ -187,7 +187,7 @@ The Errors module provides a comprehensive set of custom error classes for struc
 ### Features
 
 - ✅ **Base error class** - Common error properties and methods
-- ✅ **Transport recognition** - Mark errors as HTTP vs RPC vs WS via `transport`
+- ✅ **Transport recognition** - Automatically detected as HTTP vs RPC vs WS via Nest context
 - ✅ **Automatic logging integration** - Works seamlessly with `ExceptionLoggingFilter`
 - ✅ **Client-safe error responses** - Control what gets exposed to clients
 - ✅ **Metadata support** - Attach additional context to errors
@@ -216,14 +216,12 @@ import { BaseError } from '@code-hive/nestjs/errors';
 
 // HTTP-shaped error
 throw new BaseError('Resource not found', 'RESOURCE_NOT_FOUND', {
-  transport: 'http',
   statusCode: 404,
   metadata: { resourceId: '123', resourceType: 'user' },
 });
 
-// RPC-shaped error
+// RPC-shaped error (no statusCode)
 throw new BaseError('Service unavailable', 'SERVICE_UNAVAILABLE', {
-  transport: 'rpc',
   metadata: { serviceName: 'payment-service' },
 });
 ```
@@ -245,7 +243,6 @@ export class UsersService {
     const user = await this.repository.findOne(id);
     if (!user) {
       throw new BaseError('User not found', 'USER_NOT_FOUND', {
-        transport: 'http',
         statusCode: 404,
         metadata: { userId: id },
       });
@@ -321,7 +318,7 @@ When using custom errors with the `ExceptionLoggingFilter`, HTTP responses follo
 
 ### Best Practices
 
-1. **Use `transport` when you need explicit mapping** - `'http' | 'rpc' | 'ws'`
+1. **Rely on automatic transport detection** - `BaseError.transport` is set by `ExceptionLoggingFilter`
 2. **Include error codes** - Always provide meaningful error codes for programmatic handling
 3. **Add metadata** - Include relevant context in the metadata field
 4. **Control exposure** - Use `exposeToClient: false` for internal errors

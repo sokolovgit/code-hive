@@ -38,6 +38,10 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
 
+    if (exception instanceof BaseError) {
+      exception.setTransportIfUnset('http');
+    }
+
     // Determine status code - prioritize custom errors, then HttpException, then default
     const status =
       exception instanceof BaseError && exception.statusCode
@@ -126,6 +130,10 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
     const data = ctx.getData();
     const pattern = ctx.getContext()?.pattern || 'unknown';
 
+    if (exception instanceof BaseError) {
+      exception.setTransportIfUnset('rpc');
+    }
+
     // Build error info for logging - use custom error's toJSON if available
     const errorInfo: Record<string, unknown> =
       exception instanceof BaseError
@@ -180,6 +188,10 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
     const client = ctx.getClient();
     const data = ctx.getData();
     const pattern = ctx.getPattern() || 'unknown';
+
+    if (exception instanceof BaseError) {
+      exception.setTransportIfUnset('ws');
+    }
 
     // Build error info for logging - use custom error's toJSON if available
     const errorInfo: Record<string, unknown> =
