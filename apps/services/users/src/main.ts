@@ -9,9 +9,14 @@ import { AppModule } from './app.module';
 import { ConfigService } from './config/config.service';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  const config = app.get(ConfigService);
+  const app = await NestFactory.create(AppModule, {
+    bufferLogs: true,
+  });
+
   const logger = app.get(LoggerService);
+  app.useLogger(logger);
+
+  const config = app.get(ConfigService);
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -24,8 +29,7 @@ async function bootstrap() {
     })
   );
 
-  // const globalPrefix = 'api/v1';
-  // app.setGlobalPrefix(globalPrefix);
+  app.setGlobalPrefix(config.globalPrefix);
 
   const isDocsEnabled = config.docs.enabled;
   if (isDocsEnabled) {

@@ -24,6 +24,8 @@ export class ConfigService extends BaseConfigService<EnvType> {
     path: this.env.DOCS_PATH,
   };
 
+  globalPrefix = 'api/v1';
+
   isProduction(): boolean {
     return this.server.env === Environments.PRODUCTION;
   }
@@ -34,7 +36,7 @@ export class ConfigService extends BaseConfigService<EnvType> {
 
   getAppName(): string {
     const { name, version } = this.package;
-    return `${name} v${version}`;
+    return `${name}/v${version}`;
   }
 
   getLoggerOptions(): LoggerModuleOptions {

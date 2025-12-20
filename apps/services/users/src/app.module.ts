@@ -11,6 +11,7 @@ import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 
 import { ConfigService } from './config/config.service';
 import { validationSchema } from './config/env.schema';
+import { PingController } from './ping.controller';
 
 @Module({
   imports: [
@@ -27,7 +28,7 @@ import { validationSchema } from './config/env.schema';
       useFactory: (config: ConfigService) => config.getSwaggerOptions(),
     }),
   ],
-  controllers: [],
+  controllers: [PingController],
   providers: [
     {
       provide: APP_INTERCEPTOR,
