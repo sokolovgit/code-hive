@@ -105,7 +105,7 @@ export class SwaggerModule {
    * Setup Swagger for the given NestJS application
    * This should be called in your main.ts after app initialization
    */
-  static setup(app: INestApplication, options: SwaggerModuleOptions): void {
+  static async setup(app: INestApplication, options: SwaggerModuleOptions): Promise<void> {
     const docsPath = options.path || 'api/docs';
     const config = new DocumentBuilder()
       .setTitle(options.title)
