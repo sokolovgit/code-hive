@@ -11,6 +11,7 @@ import { Request, Response } from 'express';
 import { throwError } from 'rxjs';
 
 import { BaseError } from '../../errors';
+import { getStatusCategory } from '../logger.context';
 import { LoggerService } from '../logger.service';
 
 @Catch()
@@ -87,7 +88,13 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
                 : exception instanceof Error
                   ? exception.message
                   : 'Unknown error occurred',
-            ...(exception instanceof Error && exception.stack && { stack: exception.stack }),
+            ...(exception instanceof Error &&
+              exception.stack && {
+                stack: exception.stack
+                  .split('\n')
+                  .map((line) => line.trim())
+                  .filter(Boolean),
+              }),
             ...(exception instanceof HttpException && {
               response: errorResponse,
             }),
@@ -97,28 +104,35 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
       errorInfo.cause = exception.cause;
     }
 
+    const statusCategory = getStatusCategory(status);
     const errorLog: Record<string, unknown> = {
       requestId,
       method: request.method,
       url: request.url,
       path: request.path,
       statusCode: status,
+      statusCategory,
       ip: request.ip || request.socket.remoteAddress,
       userAgent: request.headers['user-agent'],
       error: errorInfo,
       timestamp: new Date().toISOString(),
     };
 
-    // Log at appropriate level - respect custom error's loggable flag
+    // Log at appropriate level - FIXED: Single log entry instead of double logging
     const shouldLog = !(exception instanceof BaseError) || exception.loggable;
     if (shouldLog) {
-      const pinoLogger = logger.getPinoLogger().child({ context: 'HttpException' });
+      const errorMessage = exception instanceof Error ? exception.message : 'HTTP exception';
+
+      // Single log entry with all details at appropriate level
       if (status >= 500) {
-        pinoLogger.error(errorLog, 'HTTP exception (5xx)');
+        logger.error(errorMessage, undefined, 'GlobalExceptionFilter');
+        logger.info('Exception details', errorLog, 'GlobalExceptionFilter');
       } else if (status >= 400) {
-        pinoLogger.warn(errorLog, 'HTTP exception (4xx)');
+        // 4xx errors are client errors, log as warn
+        logger.warn(errorMessage, 'GlobalExceptionFilter');
+        logger.info('Exception details', errorLog, 'GlobalExceptionFilter');
       } else {
-        pinoLogger.info(errorLog, 'HTTP exception');
+        logger.info(errorMessage, errorLog, 'GlobalExceptionFilter');
       }
     }
 
@@ -147,7 +161,13 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
                   : exception instanceof Error
                     ? exception.message
                     : 'Unknown RPC error occurred',
-              ...(exception instanceof Error && exception.stack && { stack: exception.stack }),
+              ...(exception instanceof Error &&
+                exception.stack && {
+                  stack: exception.stack
+                    .split('\n')
+                    .map((line) => line.trim())
+                    .filter(Boolean),
+                }),
             };
             if (exception instanceof Error && exception.cause) {
               info.cause = exception.cause;
@@ -166,7 +186,8 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
     // Log if error is loggable
     const shouldLog = !(exception instanceof BaseError) || exception.loggable;
     if (shouldLog) {
-      logger.getPinoLogger().child({ context: 'RpcException' }).error(errorLog, 'RPC exception');
+      logger.error('RPC exception', undefined, 'RpcException');
+      logger.info('RPC exception details', errorLog, 'RpcException');
     }
 
     // Return appropriate error format
@@ -202,7 +223,13 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
               name: exception instanceof Error ? exception.name : 'UnknownError',
               message:
                 exception instanceof Error ? exception.message : 'Unknown WebSocket error occurred',
-              ...(exception instanceof Error && exception.stack && { stack: exception.stack }),
+              ...(exception instanceof Error &&
+                exception.stack && {
+                  stack: exception.stack
+                    .split('\n')
+                    .map((line) => line.trim())
+                    .filter(Boolean),
+                }),
             };
             if (exception instanceof Error && exception.cause) {
               info.cause = exception.cause;
@@ -221,10 +248,8 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
     // Log if error is loggable
     const shouldLog = !(exception instanceof BaseError) || exception.loggable;
     if (shouldLog) {
-      logger
-        .getPinoLogger()
-        .child({ context: 'WebSocketException' })
-        .error(errorLog, 'WebSocket exception');
+      logger.error('WebSocket exception', undefined, 'WebSocketException');
+      logger.info('WebSocket exception details', errorLog, 'WebSocketException');
     }
   }
 
@@ -237,7 +262,13 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
             const info: Record<string, unknown> = {
               name: exception instanceof Error ? exception.name : 'UnknownError',
               message: exception instanceof Error ? exception.message : 'Unknown error occurred',
-              ...(exception instanceof Error && exception.stack && { stack: exception.stack }),
+              ...(exception instanceof Error &&
+                exception.stack && {
+                  stack: exception.stack
+                    .split('\n')
+                    .map((line) => line.trim())
+                    .filter(Boolean),
+                }),
             };
             if (exception instanceof Error && exception.cause) {
               info.cause = exception.cause;
@@ -253,10 +284,8 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
     // Log if error is loggable
     const shouldLog = !(exception instanceof BaseError) || exception.loggable;
     if (shouldLog) {
-      logger
-        .getPinoLogger()
-        .child({ context: 'UnhandledException' })
-        .error(errorLog, 'Unhandled exception');
+      logger.error('Unhandled exception', undefined, 'UnhandledException');
+      logger.info('Unhandled exception details', errorLog, 'UnhandledException');
     }
   }
 }

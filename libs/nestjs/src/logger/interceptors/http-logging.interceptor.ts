@@ -4,7 +4,12 @@ import { Request, Response } from 'express';
 import { Observable } from 'rxjs';
 import { tap, catchError } from 'rxjs/operators';
 
-import { loggerContext } from '../logger.context';
+import {
+  loggerContext,
+  extractTraceContext,
+  getStatusCategory,
+  getTimeBucket,
+} from '../logger.context';
 import { LoggerService } from '../logger.service';
 
 export interface HttpLoggingInterceptorOptions {
@@ -84,33 +89,68 @@ export class HttpLoggingInterceptor implements NestInterceptor {
     const requestId =
       requestIdStr || `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-    // Add request ID to response headers
+    // Extract trace context
+    const traceContext = extractTraceContext(request.headers);
+
+    // Generate span ID if not present
+    const spanId =
+      traceContext.spanId || `span-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    // Add request ID and trace context to response headers
     response.setHeader('x-request-id', requestId);
+    if (traceContext.traceId) {
+      response.setHeader('x-trace-id', traceContext.traceId);
+    }
+    response.setHeader('x-span-id', spanId);
 
     // Set context in AsyncLocalStorage for automatic inclusion in all logs
-    const user = (request as Request & { user?: { id?: string; userId?: string } }).user;
+    const user = (request as Request & { user?: { id?: string; userId?: string; role?: string } })
+      .user;
     const userId = user?.id || user?.userId;
+    const userRole = user?.role;
 
     return loggerContext.run(
       {
         requestId,
         userId,
+        userRole,
         component: 'http',
+        ...traceContext,
+        spanId,
       },
       () => {
+        // Request log
         const requestLog: Record<string, unknown> = {
           method: request.method,
           url: request.url,
           path: request.path,
-          route: request.route?.path,
+          ...(request.route?.path && { route: request.route.path }),
           ip: request.ip || request.socket.remoteAddress,
           userAgent: request.headers['user-agent'],
+          httpVersion: request.httpVersion,
+          protocol: request.protocol,
+          host: request.get('host'),
+          referer: request.get('referer'),
+          origin: request.get('origin'),
+          contentType: request.get('content-type'),
+          contentLength: request.get('content-length')
+            ? parseInt(request.get('content-length')!, 10)
+            : undefined,
+          startTime,
+          ...(logHeaders && { headers: this.sanitizeObject(request.headers) }),
           ...(logQuery &&
             request.query &&
             Object.keys(request.query).length > 0 && {
               query: this.sanitizeObject(request.query),
             }),
-          ...(logHeaders && { headers: this.sanitizeObject(request.headers) }),
+          ...(request.params &&
+            Object.keys(request.params).length > 0 && {
+              params: request.params,
+            }),
+          ...(request.cookies &&
+            Object.keys(request.cookies).length > 0 && {
+              cookies: this.sanitizeObject(request.cookies),
+            }),
           ...(logRequestBody &&
             request.body &&
             typeof request.body === 'object' &&
@@ -119,57 +159,92 @@ export class HttpLoggingInterceptor implements NestInterceptor {
             }),
         };
 
-        this.logger.info('Incoming HTTP request', requestLog);
+        const requestMessage = `-> ${request.method} ${request.path || request.url}`;
+        this.logger.info(requestMessage, requestLog, 'HTTP');
 
         return next.handle().pipe(
           tap((data: unknown) => {
             const duration = Date.now() - startTime;
+            const statusCategory = getStatusCategory(response.statusCode);
+            const responseTimeBucket = getTimeBucket(duration);
+
             const responseLog: Record<string, unknown> = {
               method: request.method,
               url: request.url,
               path: request.path,
               statusCode: response.statusCode,
-              duration: `${duration}ms`,
+              statusCategory,
+              success: response.statusCode < 400,
+              responseTime: `${duration}ms`,
+              responseTimeMs: duration,
+              responseTimeBucket,
+              startTime,
+              endTime: Date.now(),
+              ip: request.ip || request.socket.remoteAddress,
+              userAgent: request.headers['user-agent'],
+              responseSize: response.get('content-length')
+                ? parseInt(response.get('content-length')!, 10)
+                : undefined,
+              contentType: response.get('content-type'),
+              ...(logHeaders && {
+                requestHeaders: this.sanitizeObject(request.headers),
+                responseHeaders: response.getHeaders(),
+              }),
+              ...(request.cookies &&
+                Object.keys(request.cookies).length > 0 && {
+                  requestCookies: this.sanitizeObject(request.cookies),
+                }),
             };
 
             if (logResponseBody && data) {
               responseLog.responseBody = this.truncateBody(data, maxBodyLength);
             }
 
-            if (response.statusCode >= 400) {
-              this.logger.warn(`HTTP ${request.method} ${request.path} - ${response.statusCode}`);
-            } else {
-              this.logger.info(
-                `HTTP ${request.method} ${request.path} - ${response.statusCode}`,
-                responseLog
-              );
-            }
+            const logMessage = `<- ${request.method} ${request.path || request.url} ${response.statusCode} - ${duration}ms`;
+            this.logger.info(logMessage, responseLog, 'HTTP');
           }),
           catchError((error: unknown) => {
             const duration = Date.now() - startTime;
+            const statusCode = response.statusCode || 500;
+            const statusCategory = getStatusCategory(statusCode);
+            const responseTimeBucket = getTimeBucket(duration);
+
             const errorInfo: Record<string, unknown> = {
               name: error instanceof Error ? error.name : 'UnknownError',
               message: error instanceof Error ? error.message : 'Unknown error',
             };
             if (error instanceof Error && error.stack) {
-              errorInfo.stack = error.stack;
+              // Format stack as array
+              errorInfo.stack = error.stack
+                .split('\n')
+                .map((line) => line.trim())
+                .filter(Boolean);
             }
 
             const errorLog: Record<string, unknown> = {
               method: request.method,
               url: request.url,
               path: request.path,
-              statusCode: response.statusCode || 500,
-              duration: `${duration}ms`,
+              statusCode,
+              statusCategory,
+              success: false,
+              responseTime: `${duration}ms`,
+              responseTimeMs: duration,
+              responseTimeBucket,
+              startTime,
+              endTime: Date.now(),
+              ip: request.ip || request.socket.remoteAddress,
+              userAgent: request.headers['user-agent'],
               error: errorInfo,
+              ...(logHeaders && {
+                requestHeaders: this.sanitizeObject(request.headers),
+                responseHeaders: response.getHeaders(),
+              }),
             };
 
-            this.logger.error(
-              `HTTP ${request.method} ${request.path} - Error`,
-              undefined,
-              'HttpError'
-            );
-            this.logger.info('HTTP error details', errorLog);
+            const logMessage = `<- ${request.method} ${request.path || request.url} ${statusCode} - ${duration}ms`;
+            this.logger.error(logMessage, undefined, 'HTTP');
+            this.logger.info('HTTP error details', errorLog, 'HTTP');
 
             throw error;
           })
@@ -187,6 +262,8 @@ export class HttpLoggingInterceptor implements NestInterceptor {
       'apiKey',
       'apikey',
       'cookie',
+      'session',
+      'set-cookie',
     ];
     const sanitized = { ...obj };
 
