@@ -3,6 +3,7 @@ import { Inject, Optional } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { tap, catchError } from 'rxjs/operators';
 
+import { uuid } from '../../utils';
 import { loggerContext } from '../logger.context';
 import { LoggerService } from '../logger.service';
 
@@ -58,7 +59,7 @@ export class RpcLoggingInterceptor implements NestInterceptor {
     }
 
     const startTime = Date.now();
-    const requestId = `rpc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const requestId = uuid();
 
     return loggerContext.run(
       {

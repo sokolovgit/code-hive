@@ -4,6 +4,7 @@ import { Request, Response } from 'express';
 import { Observable } from 'rxjs';
 import { tap, catchError } from 'rxjs/operators';
 
+import { uuid } from '../../utils';
 import {
   loggerContext,
   extractTraceContext,
@@ -86,15 +87,13 @@ export class HttpLoggingInterceptor implements NestInterceptor {
     // Handle header type (can be string or string[])
     const requestIdHeader = request.headers['x-request-id'] || request.headers['x-correlation-id'];
     const requestIdStr = Array.isArray(requestIdHeader) ? requestIdHeader[0] : requestIdHeader;
-    const requestId =
-      requestIdStr || `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const requestId = requestIdStr || uuid();
 
     // Extract trace context
     const traceContext = extractTraceContext(request.headers);
 
     // Generate span ID if not present
-    const spanId =
-      traceContext.spanId || `span-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const spanId = traceContext.spanId || uuid();
 
     // Add request ID and trace context to response headers
     response.setHeader('x-request-id', requestId);
