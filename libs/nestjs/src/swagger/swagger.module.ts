@@ -2,8 +2,12 @@ import { DynamicModule, INestApplication, Module, Provider, Type } from '@nestjs
 import { DocumentBuilder, SwaggerModule as NestSwaggerModule } from '@nestjs/swagger';
 
 import { SWAGGER_OPTIONS } from './swagger.constants';
+import baseTheme from './themes/base';
+import draculaTheme from './themes/dracula';
 
 import type { ModuleMetadata } from '@nestjs/common/interfaces';
+
+export type Theme = 'default' | 'dracula';
 
 export interface SwaggerAuthConfig {
   /**
@@ -48,6 +52,12 @@ export interface SwaggerModuleOptions {
   /**
    * Additional Swagger setup options
    */
+  /**
+   * Theme for the Swagger UI
+   * @default 'default'
+   */
+  theme?: Theme;
+
   swaggerOptions?: {
     explorer?: boolean;
     jsonDocumentUrl?: string;
@@ -142,6 +152,26 @@ export class SwaggerModule {
       ...options.swaggerOptions,
     };
 
-    NestSwaggerModule.setup(docsPath, app, document, swaggerOptions);
+    NestSwaggerModule.setup(docsPath, app, document, {
+      ...swaggerOptions,
+      customCss: this.getThemeCss(options.theme || 'default'),
+    });
+  }
+
+  private static getThemeCss(theme: Theme): string {
+    // Always include base theme CSS
+    let css = baseTheme;
+
+    // Add theme-specific CSS variables
+    switch (theme) {
+      case 'dracula':
+        css += '\n' + draculaTheme;
+        break;
+      default:
+        // For default theme, only base CSS is applied (no custom variables)
+        break;
+    }
+
+    return css;
   }
 }

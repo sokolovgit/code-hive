@@ -1,8 +1,9 @@
 import { DynamicModule, Global, Module, Provider, Type } from '@nestjs/common';
-import type { ModuleMetadata } from '@nestjs/common/interfaces';
 
 import { LOGGER_OPTIONS } from './logger.constants';
 import { LoggerService, LoggerModuleOptions } from './logger.service';
+
+import type { ModuleMetadata } from '@nestjs/common/interfaces';
 
 export interface LoggerModuleAsyncOptions<TFactoryArgs extends unknown[] = unknown[]> extends Pick<
   ModuleMetadata,

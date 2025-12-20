@@ -50,6 +50,7 @@ export class ConfigService extends BaseConfigService<EnvType> {
       description: this.getSwaggerDescription(),
       version: this.package.version,
       path: this.docs.path,
+      theme: 'dracula',
     };
   }
 
