@@ -49,6 +49,7 @@ export class ConfigService extends BaseConfigService<EnvType> {
     return {
       environment: this.server.env,
       appName: this.getAppName(),
+      prettyPrint: false,
     };
   }
 
