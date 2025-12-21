@@ -32,7 +32,8 @@ export class LoggerModule {
 
     const loggerContextServiceProvider: Provider = {
       provide: LoggerContextService,
-      useFactory: (cls?: ClsService) => {
+      useFactory: (cls: ClsService) => {
+        // ClsService is required - ClsModule must be imported
         const service = new LoggerContextService(cls);
         setLoggerContextService(service);
         return service;
@@ -66,7 +67,8 @@ export class LoggerModule {
 
     const loggerContextServiceProvider: Provider = {
       provide: LoggerContextService,
-      useFactory: (cls?: ClsService) => {
+      useFactory: (cls: ClsService) => {
+        // ClsService is required - ClsModule must be imported
         const service = new LoggerContextService(cls);
         setLoggerContextService(service);
         return service;

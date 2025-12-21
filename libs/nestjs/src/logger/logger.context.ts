@@ -1,6 +1,6 @@
 import * as os from 'os';
 
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 
 export interface LoggerContext {
@@ -55,7 +55,7 @@ export interface LoggerContext {
  */
 @Injectable()
 export class LoggerContextService {
-  constructor(@Optional() private readonly cls?: ClsService) {}
+  constructor(private readonly cls: ClsService) {}
 
   /**
    * Run a function with context
@@ -63,17 +63,12 @@ export class LoggerContextService {
    * Otherwise, falls back to direct execution
    */
   run<T>(context: LoggerContext, callback: () => T): T {
-    if (this.cls) {
-      // Set all context values in CLS
-      const cls = this.cls;
-      Object.entries(context).forEach(([key, value]) => {
-        if (value !== undefined) {
-          cls.set(key, value);
-        }
-      });
-      return callback();
-    }
-    // Fallback: just execute callback (no context storage)
+    // Set all context values in CLS
+    Object.entries(context).forEach(([key, value]) => {
+      if (value !== undefined) {
+        this.cls.set(key, value);
+      }
+    });
     return callback();
   }
 
@@ -81,10 +76,6 @@ export class LoggerContextService {
    * Get current context
    */
   get(): LoggerContext | undefined {
-    if (!this.cls) {
-      return undefined;
-    }
-
     const store = this.cls.get();
     if (!store) {
       return undefined;
@@ -126,7 +117,6 @@ export class LoggerContextService {
     ];
 
     contextKeys.forEach((key) => {
-      if (!this.cls) return;
       const value = this.cls.get(key as string);
       if (value !== undefined) {
         context[key] = value as LoggerContext[typeof key];
@@ -134,17 +124,15 @@ export class LoggerContextService {
     });
 
     // Include any additional keys from store
-    if (this.cls) {
-      const storeKeys = Object.keys(store) as string[];
-      storeKeys.forEach((key) => {
-        if (!contextKeys.includes(key as keyof LoggerContext)) {
-          const value = this.cls!.get(key);
-          if (value !== undefined) {
-            context[key] = value as unknown;
-          }
+    const storeKeys = Object.keys(store) as string[];
+    storeKeys.forEach((key) => {
+      if (!contextKeys.includes(key as keyof LoggerContext)) {
+        const value = this.cls.get(key);
+        if (value !== undefined) {
+          context[key] = value as unknown;
         }
-      });
-    }
+      }
+    });
 
     return context;
   }
@@ -153,7 +141,7 @@ export class LoggerContextService {
    * Set context value
    */
   set(key: keyof LoggerContext, value: unknown): void {
-    if (this.cls && value !== undefined) {
+    if (value !== undefined) {
       this.cls.set(key as string, value);
     }
   }
@@ -162,9 +150,6 @@ export class LoggerContextService {
    * Get context value
    */
   getValue<K extends keyof LoggerContext>(key: K): LoggerContext[K] | undefined {
-    if (!this.cls) {
-      return undefined;
-    }
     return this.cls.get(key as string) as LoggerContext[K] | undefined;
   }
 

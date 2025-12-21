@@ -34,6 +34,10 @@
       "types": "./dist/utils/index.d.ts",
       "default": "./dist/utils/index.js"
     },
+    "./cls": {
+      "types": "./dist/cls/index.d.ts",
+      "default": "./dist/cls/index.js"
+    },
     "./database/drizzle": {
       "types": "./dist/database/drizzle/index.d.ts",
       "default": "./dist/database/drizzle/index.js"
@@ -52,9 +56,9 @@
     "@nestjs/microservices": "^11.1.9",
     "@nestjs/swagger": "^11.2.3",
     "@scalar/nestjs-api-reference": "^1.0.13",
-    "@scalar/themes": "0.13.13",
+    "@scalar/themes": "0.13.26",
     "@types/pg": "^8.16.0",
-    "bullmq": "^5.66.1",
+    "bullmq": "^5.66.2",
     "dotenv": "^17.2.3",
     "dotenv-expand": "^12.0.3",
     "drizzle-orm": "^0.45.1",

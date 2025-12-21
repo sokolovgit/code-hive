@@ -53,13 +53,15 @@ export interface HttpLoggingInterceptorOptions {
 @Injectable()
 export class HttpLoggingInterceptor implements NestInterceptor {
   private readonly logger: LoggerService;
+  private readonly cls: ClsService;
 
   constructor(
     @Inject(LoggerService) loggerService: LoggerService,
-    @Optional() private readonly cls?: ClsService,
+    @Inject(ClsService) clsService: ClsService,
     @Optional() private readonly options: HttpLoggingInterceptorOptions = {}
   ) {
     this.logger = loggerService;
+    this.cls = clsService;
   }
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
@@ -119,15 +121,12 @@ export class HttpLoggingInterceptor implements NestInterceptor {
       spanId,
     };
 
-    // Set context in CLS if available
-    if (this.cls) {
-      const cls = this.cls;
-      Object.entries(loggerCtx).forEach(([key, value]) => {
-        if (value !== undefined) {
-          cls.set(key, value);
-        }
-      });
-    }
+    // Set context in CLS
+    Object.entries(loggerCtx).forEach(([key, value]) => {
+      if (value !== undefined) {
+        this.cls.set(key, value);
+      }
+    });
 
     return loggerContext.run(loggerCtx, () => {
       // Request log

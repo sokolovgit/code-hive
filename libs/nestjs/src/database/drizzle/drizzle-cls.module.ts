@@ -1,7 +1,8 @@
 import { DynamicModule, Module } from '@nestjs/common';
 import { ClsPluginTransactional } from '@nestjs-cls/transactional';
 import { TransactionalAdapterDrizzleOrm } from '@nestjs-cls/transactional-adapter-drizzle-orm';
-import { ClsModule } from 'nestjs-cls';
+
+import { ClsModule } from '../../cls';
 
 import { DRIZZLE_DB } from './drizzle.constants';
 
@@ -13,6 +14,12 @@ export interface DrizzleClsModuleOptions {
   drizzleToken?: string | symbol;
 }
 
+/**
+ * Drizzle CLS Module - Extends ClsModule with transactional support
+ *
+ * This module sets up CLS with the transactional plugin for Drizzle ORM.
+ * It internally uses ClsModule to set up the base CLS infrastructure.
+ */
 @Module({})
 export class DrizzleClsModule {
   static forRoot(options: DrizzleClsModuleOptions = {}): DynamicModule {
@@ -21,18 +28,8 @@ export class DrizzleClsModule {
     return {
       module: DrizzleClsModule,
       imports: [
+        // Set up CLS with transactional plugin
         ClsModule.forRoot({
-          global: true,
-          middleware: {
-            mount: true,
-            setup: (cls, req) => {
-              // Set request context from headers
-              const requestId = req.headers['x-request-id'] || req.headers['x-correlation-id'];
-              if (requestId) {
-                cls.set('requestId', Array.isArray(requestId) ? requestId[0] : requestId);
-              }
-            },
-          },
           plugins: [
             new ClsPluginTransactional({
               imports: [], // DrizzleModule should be imported separately
@@ -43,7 +40,6 @@ export class DrizzleClsModule {
           ],
         }),
       ],
-      exports: [ClsModule],
     };
   }
 }
