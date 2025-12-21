@@ -1,6 +1,8 @@
 import { DynamicModule, Global, Module, Provider, Type } from '@nestjs/common';
+import { ClsService } from 'nestjs-cls';
 
 import { LOGGER_OPTIONS } from './logger.constants';
+import { LoggerContextService, setLoggerContextService } from './logger.context';
 import { LoggerService, LoggerModuleOptions } from './logger.service';
 
 import type { ModuleMetadata } from '@nestjs/common/interfaces';
@@ -28,6 +30,16 @@ export class LoggerModule {
       useValue: options,
     };
 
+    const loggerContextServiceProvider: Provider = {
+      provide: LoggerContextService,
+      useFactory: (cls?: ClsService) => {
+        const service = new LoggerContextService(cls);
+        setLoggerContextService(service);
+        return service;
+      },
+      inject: [ClsService],
+    };
+
     const loggerServiceProvider: Provider = {
       provide: LoggerService,
       useFactory: (options: LoggerModuleOptions) => {
@@ -38,8 +50,8 @@ export class LoggerModule {
 
     return {
       module: LoggerModule,
-      providers: [loggerOptionsProvider, loggerServiceProvider],
-      exports: [LoggerService],
+      providers: [loggerOptionsProvider, loggerContextServiceProvider, loggerServiceProvider],
+      exports: [LoggerService, LoggerContextService],
     };
   }
 
@@ -52,6 +64,16 @@ export class LoggerModule {
       inject: (options.inject ?? []) as Array<Type<unknown> | string | symbol>,
     };
 
+    const loggerContextServiceProvider: Provider = {
+      provide: LoggerContextService,
+      useFactory: (cls?: ClsService) => {
+        const service = new LoggerContextService(cls);
+        setLoggerContextService(service);
+        return service;
+      },
+      inject: [ClsService],
+    };
+
     const loggerServiceProvider: Provider = {
       provide: LoggerService,
       useFactory: (loggerOptions: LoggerModuleOptions) => new LoggerService(loggerOptions),
@@ -61,8 +83,8 @@ export class LoggerModule {
     return {
       module: LoggerModule,
       imports: options.imports ?? [],
-      providers: [loggerOptionsProvider, loggerServiceProvider],
-      exports: [LoggerService],
+      providers: [loggerOptionsProvider, loggerContextServiceProvider, loggerServiceProvider],
+      exports: [LoggerService, LoggerContextService],
     };
   }
 }

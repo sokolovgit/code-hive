@@ -1,5 +1,6 @@
 import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common';
 import { Inject, Optional } from '@nestjs/common';
+import { ClsService } from 'nestjs-cls';
 import { Observable } from 'rxjs';
 import { tap, catchError } from 'rxjs/operators';
 
@@ -35,6 +36,7 @@ export class WebSocketLoggingInterceptor implements NestInterceptor {
 
   constructor(
     @Inject(LoggerService) loggerService: LoggerService,
+    @Optional() private readonly cls?: ClsService,
     @Optional() private readonly options: WebSocketLoggingInterceptorOptions = {}
   ) {
     this.logger = loggerService;
@@ -62,65 +64,74 @@ export class WebSocketLoggingInterceptor implements NestInterceptor {
     const startTime = Date.now();
     const requestId = uuid();
 
-    return loggerContext.run(
-      {
-        requestId,
-        component: 'websocket',
-      },
-      () => {
-        const requestLog: Record<string, unknown> = {
-          event: pattern,
-          ...(logClientInfo && {
-            clientId: (client as { id?: string })?.id,
-            clientIp: (client as { handshake?: { address?: string } })?.handshake?.address,
-            clientHeaders: (client as { handshake?: { headers?: Record<string, unknown> } })
-              ?.handshake?.headers,
+    const loggerCtx = {
+      requestId,
+      component: 'websocket',
+    };
+
+    // Set context in CLS if available
+    if (this.cls) {
+      const cls = this.cls;
+      Object.entries(loggerCtx).forEach(([key, value]) => {
+        if (value !== undefined) {
+          cls.set(key, value);
+        }
+      });
+    }
+
+    return loggerContext.run(loggerCtx, () => {
+      const requestLog: Record<string, unknown> = {
+        event: pattern,
+        ...(logClientInfo && {
+          clientId: (client as { id?: string })?.id,
+          clientIp: (client as { handshake?: { address?: string } })?.handshake?.address,
+          clientHeaders: (client as { handshake?: { headers?: Record<string, unknown> } })
+            ?.handshake?.headers,
+        }),
+        ...(logMessageData &&
+          data && {
+            data: this.truncateData(data, maxDataLength),
           }),
-          ...(logMessageData &&
-            data && {
-              data: this.truncateData(data, maxDataLength),
-            }),
-        };
+      };
 
-        this.logger.info('WebSocket message received', requestLog);
+      this.logger.info('WebSocket message received', requestLog);
 
-        return next.handle().pipe(
-          tap((responseData: unknown) => {
-            const duration = Date.now() - startTime;
-            const responseLog: Record<string, unknown> = {
-              event: pattern,
-              duration: `${duration}ms`,
-            };
-            if (responseData) {
-              responseLog.responseData = this.truncateData(responseData, maxDataLength);
-            }
+      return next.handle().pipe(
+        tap((responseData: unknown) => {
+          const duration = Date.now() - startTime;
+          const responseLog: Record<string, unknown> = {
+            event: pattern,
+            duration: `${duration}ms`,
+          };
+          if (responseData) {
+            responseLog.responseData = this.truncateData(responseData, maxDataLength);
+          }
 
-            this.logger.info('WebSocket response', responseLog);
-          }),
-          catchError((error: unknown) => {
-            const duration = Date.now() - startTime;
-            const errorInfo: Record<string, unknown> = {
-              name: error instanceof Error ? error.name : 'UnknownError',
-              message: error instanceof Error ? error.message : 'Unknown error',
-            };
-            if (error instanceof Error && error.stack) {
-              errorInfo.stack = error.stack;
-            }
+          this.logger.info('WebSocket response', responseLog);
+        }),
+        catchError((error: unknown) => {
+          const duration = Date.now() - startTime;
+          const errorInfo: Record<string, unknown> = {
+            name: error instanceof Error ? error.name : 'UnknownError',
+            message: error instanceof Error ? error.message : 'Unknown error',
+          };
+          if (error instanceof Error && error.stack) {
+            errorInfo.stack = error.stack;
+          }
 
-            const errorLog: Record<string, unknown> = {
-              event: pattern,
-              duration: `${duration}ms`,
-              error: errorInfo,
-            };
+          const errorLog: Record<string, unknown> = {
+            event: pattern,
+            duration: `${duration}ms`,
+            error: errorInfo,
+          };
 
-            this.logger.error('WebSocket error', undefined, 'WebSocketError');
-            this.logger.info('WebSocket error details', errorLog);
+          this.logger.error('WebSocket error', undefined, 'WebSocketError');
+          this.logger.info('WebSocket error details', errorLog);
 
-            throw error;
-          })
-        );
-      }
-    );
+          throw error;
+        })
+      );
+    });
   }
 
   private truncateData(data: unknown, maxLength: number): unknown {

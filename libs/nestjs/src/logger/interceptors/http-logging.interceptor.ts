@@ -1,6 +1,7 @@
 import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common';
 import { Inject, Optional } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { ClsService } from 'nestjs-cls';
 import { Observable } from 'rxjs';
 import { tap, catchError } from 'rxjs/operators';
 
@@ -55,6 +56,7 @@ export class HttpLoggingInterceptor implements NestInterceptor {
 
   constructor(
     @Inject(LoggerService) loggerService: LoggerService,
+    @Optional() private readonly cls?: ClsService,
     @Optional() private readonly options: HttpLoggingInterceptorOptions = {}
   ) {
     this.logger = loggerService;
@@ -102,154 +104,163 @@ export class HttpLoggingInterceptor implements NestInterceptor {
     }
     response.setHeader('x-span-id', spanId);
 
-    // Set context in AsyncLocalStorage for automatic inclusion in all logs
+    // Set context in CLS for automatic inclusion in all logs
     const user = (request as Request & { user?: { id?: string; userId?: string; role?: string } })
       .user;
     const userId = user?.id || user?.userId;
     const userRole = user?.role;
 
-    return loggerContext.run(
-      {
-        requestId,
-        userId,
-        userRole,
-        component: 'http',
-        ...traceContext,
-        spanId,
-      },
-      () => {
-        // Request log
-        const requestLog: Record<string, unknown> = {
-          method: request.method,
-          url: request.url,
-          path: request.path,
-          ...(request.route?.path && { route: request.route.path }),
-          ip: request.ip || request.socket.remoteAddress,
-          userAgent: request.headers['user-agent'],
-          httpVersion: request.httpVersion,
-          protocol: request.protocol,
-          host: request.get('host'),
-          referer: request.get('referer'),
-          origin: request.get('origin'),
-          contentType: request.get('content-type'),
-          contentLength: request.get('content-length')
-            ? parseInt(request.get('content-length')!, 10)
-            : undefined,
-          startTime,
-          ...(logHeaders && { headers: this.sanitizeObject(request.headers) }),
-          ...(logQuery &&
-            request.query &&
-            Object.keys(request.query).length > 0 && {
-              query: this.sanitizeObject(request.query),
-            }),
-          ...(request.params &&
-            Object.keys(request.params).length > 0 && {
-              params: request.params,
-            }),
-          ...(request.cookies &&
-            Object.keys(request.cookies).length > 0 && {
-              cookies: this.sanitizeObject(request.cookies),
-            }),
-          ...(logRequestBody &&
-            request.body &&
-            typeof request.body === 'object' &&
-            Object.keys(request.body).length > 0 && {
-              body: this.truncateBody(request.body, maxBodyLength),
-            }),
-        };
+    const loggerCtx = {
+      requestId,
+      userId,
+      userRole,
+      component: 'http',
+      ...traceContext,
+      spanId,
+    };
 
-        const requestMessage = `-> ${request.method} ${request.path || request.url}`;
-        this.logger.info(requestMessage, requestLog, 'HTTP');
+    // Set context in CLS if available
+    if (this.cls) {
+      const cls = this.cls;
+      Object.entries(loggerCtx).forEach(([key, value]) => {
+        if (value !== undefined) {
+          cls.set(key, value);
+        }
+      });
+    }
 
-        return next.handle().pipe(
-          tap((data: unknown) => {
-            const duration = Date.now() - startTime;
-            const statusCategory = getStatusCategory(response.statusCode);
-            const responseTimeBucket = getTimeBucket(duration);
-
-            const responseLog: Record<string, unknown> = {
-              method: request.method,
-              url: request.url,
-              path: request.path,
-              statusCode: response.statusCode,
-              statusCategory,
-              success: response.statusCode < 400,
-              responseTime: `${duration}ms`,
-              responseTimeMs: duration,
-              responseTimeBucket,
-              startTime,
-              endTime: Date.now(),
-              ip: request.ip || request.socket.remoteAddress,
-              userAgent: request.headers['user-agent'],
-              responseSize: response.get('content-length')
-                ? parseInt(response.get('content-length')!, 10)
-                : undefined,
-              contentType: response.get('content-type'),
-              ...(logHeaders && {
-                requestHeaders: this.sanitizeObject(request.headers),
-                responseHeaders: response.getHeaders(),
-              }),
-              ...(request.cookies &&
-                Object.keys(request.cookies).length > 0 && {
-                  requestCookies: this.sanitizeObject(request.cookies),
-                }),
-            };
-
-            if (logResponseBody && data) {
-              responseLog.responseBody = this.truncateBody(data, maxBodyLength);
-            }
-
-            const logMessage = `<- ${request.method} ${request.path || request.url} ${response.statusCode} - ${duration}ms`;
-            this.logger.info(logMessage, responseLog, 'HTTP');
+    return loggerContext.run(loggerCtx, () => {
+      // Request log
+      const requestLog: Record<string, unknown> = {
+        method: request.method,
+        url: request.url,
+        path: request.path,
+        ...(request.route?.path && { route: request.route.path }),
+        ip: request.ip || request.socket.remoteAddress,
+        userAgent: request.headers['user-agent'],
+        httpVersion: request.httpVersion,
+        protocol: request.protocol,
+        host: request.get('host'),
+        referer: request.get('referer'),
+        origin: request.get('origin'),
+        contentType: request.get('content-type'),
+        contentLength: request.get('content-length')
+          ? parseInt(request.get('content-length')!, 10)
+          : undefined,
+        startTime,
+        ...(logHeaders && { headers: this.sanitizeObject(request.headers) }),
+        ...(logQuery &&
+          request.query &&
+          Object.keys(request.query).length > 0 && {
+            query: this.sanitizeObject(request.query),
           }),
-          catchError((error: unknown) => {
-            const duration = Date.now() - startTime;
-            const statusCode = response.statusCode || 500;
-            const statusCategory = getStatusCategory(statusCode);
-            const responseTimeBucket = getTimeBucket(duration);
+        ...(request.params &&
+          Object.keys(request.params).length > 0 && {
+            params: request.params,
+          }),
+        ...(request.cookies &&
+          Object.keys(request.cookies).length > 0 && {
+            cookies: this.sanitizeObject(request.cookies),
+          }),
+        ...(logRequestBody &&
+          request.body &&
+          typeof request.body === 'object' &&
+          Object.keys(request.body).length > 0 && {
+            body: this.truncateBody(request.body, maxBodyLength),
+          }),
+      };
 
-            const errorInfo: Record<string, unknown> = {
-              name: error instanceof Error ? error.name : 'UnknownError',
-              message: error instanceof Error ? error.message : 'Unknown error',
-            };
-            if (error instanceof Error && error.stack) {
-              // Format stack as array
-              errorInfo.stack = error.stack
-                .split('\n')
-                .map((line) => line.trim())
-                .filter(Boolean);
-            }
+      const requestMessage = `-> ${request.method} ${request.path || request.url}`;
+      this.logger.info(requestMessage, requestLog, 'HTTP');
 
-            const errorLog: Record<string, unknown> = {
-              method: request.method,
-              url: request.url,
-              path: request.path,
-              statusCode,
-              statusCategory,
-              success: false,
-              responseTime: `${duration}ms`,
-              responseTimeMs: duration,
-              responseTimeBucket,
-              startTime,
-              endTime: Date.now(),
-              ip: request.ip || request.socket.remoteAddress,
-              userAgent: request.headers['user-agent'],
-              error: errorInfo,
-              ...(logHeaders && {
-                requestHeaders: this.sanitizeObject(request.headers),
-                responseHeaders: response.getHeaders(),
+      return next.handle().pipe(
+        tap((data: unknown) => {
+          const duration = Date.now() - startTime;
+          const statusCategory = getStatusCategory(response.statusCode);
+          const responseTimeBucket = getTimeBucket(duration);
+
+          const responseLog: Record<string, unknown> = {
+            method: request.method,
+            url: request.url,
+            path: request.path,
+            statusCode: response.statusCode,
+            statusCategory,
+            success: response.statusCode < 400,
+            responseTime: `${duration}ms`,
+            responseTimeMs: duration,
+            responseTimeBucket,
+            startTime,
+            endTime: Date.now(),
+            ip: request.ip || request.socket.remoteAddress,
+            userAgent: request.headers['user-agent'],
+            responseSize: response.get('content-length')
+              ? parseInt(response.get('content-length')!, 10)
+              : undefined,
+            contentType: response.get('content-type'),
+            ...(logHeaders && {
+              requestHeaders: this.sanitizeObject(request.headers),
+              responseHeaders: response.getHeaders(),
+            }),
+            ...(request.cookies &&
+              Object.keys(request.cookies).length > 0 && {
+                requestCookies: this.sanitizeObject(request.cookies),
               }),
-            };
+          };
 
-            const logMessage = `<- ${request.method} ${request.path || request.url} ${statusCode} - ${duration}ms`;
-            this.logger.error(logMessage, undefined, 'HTTP');
-            this.logger.info('HTTP error details', errorLog, 'HTTP');
+          if (logResponseBody && data) {
+            responseLog.responseBody = this.truncateBody(data, maxBodyLength);
+          }
 
-            throw error;
-          })
-        );
-      }
-    );
+          const logMessage = `<- ${request.method} ${request.path || request.url} ${response.statusCode} - ${duration}ms`;
+          this.logger.info(logMessage, responseLog, 'HTTP');
+        }),
+        catchError((error: unknown) => {
+          const duration = Date.now() - startTime;
+          const statusCode = response.statusCode || 500;
+          const statusCategory = getStatusCategory(statusCode);
+          const responseTimeBucket = getTimeBucket(duration);
+
+          const errorInfo: Record<string, unknown> = {
+            name: error instanceof Error ? error.name : 'UnknownError',
+            message: error instanceof Error ? error.message : 'Unknown error',
+          };
+          if (error instanceof Error && error.stack) {
+            // Format stack as array
+            errorInfo.stack = error.stack
+              .split('\n')
+              .map((line) => line.trim())
+              .filter(Boolean);
+          }
+
+          const errorLog: Record<string, unknown> = {
+            method: request.method,
+            url: request.url,
+            path: request.path,
+            statusCode,
+            statusCategory,
+            success: false,
+            responseTime: `${duration}ms`,
+            responseTimeMs: duration,
+            responseTimeBucket,
+            startTime,
+            endTime: Date.now(),
+            ip: request.ip || request.socket.remoteAddress,
+            userAgent: request.headers['user-agent'],
+            error: errorInfo,
+            ...(logHeaders && {
+              requestHeaders: this.sanitizeObject(request.headers),
+              responseHeaders: response.getHeaders(),
+            }),
+          };
+
+          const logMessage = `<- ${request.method} ${request.path || request.url} ${statusCode} - ${duration}ms`;
+          this.logger.error(logMessage, undefined, 'HTTP');
+          this.logger.info('HTTP error details', errorLog, 'HTTP');
+
+          throw error;
+        })
+      );
+    });
   }
 
   private sanitizeObject(obj: Record<string, unknown>): Record<string, unknown> {

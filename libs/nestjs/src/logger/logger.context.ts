@@ -1,5 +1,7 @@
-import { AsyncLocalStorage } from 'async_hooks';
 import * as os from 'os';
+
+import { Injectable, Optional } from '@nestjs/common';
+import { ClsService } from 'nestjs-cls';
 
 export interface LoggerContext {
   // Request correlation
@@ -47,30 +49,112 @@ export interface LoggerContext {
   [key: string]: unknown;
 }
 
-class LoggerContextStore {
-  private readonly storage = new AsyncLocalStorage<LoggerContext>();
+/**
+ * Logger Context Service using nestjs-cls
+ * Provides request-scoped context storage using Continuation Local Storage
+ */
+@Injectable()
+export class LoggerContextService {
+  constructor(@Optional() private readonly cls?: ClsService) {}
 
   /**
    * Run a function with context
+   * If ClsService is available, uses CLS context
+   * Otherwise, falls back to direct execution
    */
   run<T>(context: LoggerContext, callback: () => T): T {
-    return this.storage.run(context, callback);
+    if (this.cls) {
+      // Set all context values in CLS
+      const cls = this.cls;
+      Object.entries(context).forEach(([key, value]) => {
+        if (value !== undefined) {
+          cls.set(key, value);
+        }
+      });
+      return callback();
+    }
+    // Fallback: just execute callback (no context storage)
+    return callback();
   }
 
   /**
    * Get current context
    */
   get(): LoggerContext | undefined {
-    return this.storage.getStore();
+    if (!this.cls) {
+      return undefined;
+    }
+
+    const store = this.cls.get();
+    if (!store) {
+      return undefined;
+    }
+
+    // Extract only LoggerContext keys
+    const context: LoggerContext = {};
+    const contextKeys: (keyof LoggerContext)[] = [
+      'requestId',
+      'correlationId',
+      'transactionId',
+      'operationId',
+      'parentRequestId',
+      'rootRequestId',
+      'traceId',
+      'spanId',
+      'parentSpanId',
+      'traceFlags',
+      'userId',
+      'userRole',
+      'sessionId',
+      'component',
+      'service',
+      'method',
+      'serviceName',
+      'serviceVersion',
+      'tenantId',
+      'organizationId',
+      'action',
+      'resource',
+      'resourceId',
+      'source',
+      'clientId',
+      'tags',
+      'category',
+      'subcategory',
+      'severity',
+      'featureFlags',
+    ];
+
+    contextKeys.forEach((key) => {
+      if (!this.cls) return;
+      const value = this.cls.get(key as string);
+      if (value !== undefined) {
+        context[key] = value as LoggerContext[typeof key];
+      }
+    });
+
+    // Include any additional keys from store
+    if (this.cls) {
+      const storeKeys = Object.keys(store) as string[];
+      storeKeys.forEach((key) => {
+        if (!contextKeys.includes(key as keyof LoggerContext)) {
+          const value = this.cls!.get(key);
+          if (value !== undefined) {
+            context[key] = value as unknown;
+          }
+        }
+      });
+    }
+
+    return context;
   }
 
   /**
    * Set context value
    */
   set(key: keyof LoggerContext, value: unknown): void {
-    const store = this.storage.getStore();
-    if (store) {
-      store[key] = value as never;
+    if (this.cls && value !== undefined) {
+      this.cls.set(key as string, value);
     }
   }
 
@@ -78,19 +162,76 @@ class LoggerContextStore {
    * Get context value
    */
   getValue<K extends keyof LoggerContext>(key: K): LoggerContext[K] | undefined {
-    const store = this.storage.getStore();
-    return store?.[key];
+    if (!this.cls) {
+      return undefined;
+    }
+    return this.cls.get(key as string) as LoggerContext[K] | undefined;
   }
 
   /**
    * Get all context
    */
   getAll(): LoggerContext {
-    return this.storage.getStore() || {};
+    return this.get() || {};
   }
 }
 
-export const loggerContext = new LoggerContextStore();
+/**
+ * Global logger context instance
+ * Uses ClsService when available (injected via DI)
+ * For backward compatibility, provides a singleton that can work without ClsService
+ */
+let globalLoggerContextService: LoggerContextService | null = null;
+
+/**
+ * Initialize logger context service (called by LoggerModule)
+ */
+export function setLoggerContextService(service: LoggerContextService): void {
+  globalLoggerContextService = service;
+}
+
+/**
+ * Get logger context service instance
+ * @internal
+ */
+export function getLoggerContextService(): LoggerContextService | null {
+  return globalLoggerContextService;
+}
+
+/**
+ * Backward-compatible logger context wrapper
+ * Uses global service instance if available
+ */
+export const loggerContext = {
+  run<T>(context: LoggerContext, callback: () => T): T {
+    const service = getLoggerContextService();
+    if (service) {
+      return service.run(context, callback);
+    }
+    // Fallback: execute without context
+    return callback();
+  },
+
+  get(): LoggerContext | undefined {
+    const service = getLoggerContextService();
+    return service?.get();
+  },
+
+  set(key: keyof LoggerContext, value: unknown): void {
+    const service = getLoggerContextService();
+    service?.set(key, value);
+  },
+
+  getValue<K extends keyof LoggerContext>(key: K): LoggerContext[K] | undefined {
+    const service = getLoggerContextService();
+    return service?.getValue(key);
+  },
+
+  getAll(): LoggerContext {
+    const service = getLoggerContextService();
+    return service?.getAll() || {};
+  },
+};
 
 /**
  * Get infrastructure context (hostname, pod, region, etc.)
