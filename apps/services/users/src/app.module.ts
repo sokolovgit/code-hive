@@ -1,4 +1,6 @@
+import { ClsModuleWrapper } from '@code-hive/nestjs/cls';
 import { ConfigModule } from '@code-hive/nestjs/config';
+import { DrizzleModule } from '@code-hive/nestjs/database/drizzle';
 import {
   ExceptionLoggingFilter,
   HttpLoggingInterceptor,
@@ -8,15 +10,21 @@ import {
 import { SwaggerModule } from '@code-hive/nestjs/swagger';
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
+import { ClsService } from 'nestjs-cls';
 
 import { ConfigService } from './config/config.service';
 import { validationSchema } from './config/env.schema';
 import { PingController } from './ping.controller';
+import { UsersModule } from './users/users.module';
+import * as schema from './users/users.schema';
 
 @Module({
-  // test controller
   controllers: [PingController],
   imports: [
+    // Set up CLS first with Drizzle transactional plugin
+    ClsModuleWrapper.forRoot({
+      plugins: [DrizzleModule.getTransactionalPlugin()],
+    }),
     ConfigModule.forRoot({
       validationSchema,
       providers: [ConfigService],
@@ -29,18 +37,27 @@ import { PingController } from './ping.controller';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => config.getSwaggerOptions(),
     }),
+    DrizzleModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        ...config.getDrizzleOptions(),
+        schema,
+      }),
+    }),
+    UsersModule,
   ],
   providers: [
     {
       provide: APP_INTERCEPTOR,
-      useFactory: (logger: LoggerService, config: ConfigService) =>
-        new HttpLoggingInterceptor(logger, config.getHttpLoggingInterceptorOptions()),
-      inject: [LoggerService, ConfigService],
+      inject: [LoggerService, ConfigService, ClsService],
+      useFactory: (logger: LoggerService, config: ConfigService, cls: ClsService) =>
+        new HttpLoggingInterceptor(logger, cls, config.getHttpLoggingInterceptorOptions()),
     },
     {
       provide: APP_FILTER,
-      useFactory: (logger: LoggerService) => new ExceptionLoggingFilter(logger),
-      inject: [LoggerService],
+      inject: [LoggerService, ClsService],
+      useFactory: (logger: LoggerService, cls: ClsService) =>
+        new ExceptionLoggingFilter(logger, cls),
     },
   ],
 })
