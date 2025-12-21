@@ -1,0 +1,101 @@
+# Shared Infrastructure Services
+# This compose file contains all shared infrastructure services (databases, message brokers, etc.)
+# that are used across multiple services in the monorepo.
+#
+# Usage:
+#   docker-compose up -d                    # Start all infrastructure
+#   docker-compose up -d postgres redis     # Start specific services
+#   docker-compose down                      # Stop all infrastructure
+#
+# For development with services, use:
+#   docker-compose -f docker-compose.yml -f docker-compose.override.yml up
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: code-hive-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-codehive}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - code-hive-network
+
+  # Redis (for BullMQ, caching, sessions)
+  redis:
+    image: redis:7-alpine
+    container_name: code-hive-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis}
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', '--raw', 'incr', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - code-hive-network
+
+  # Optional: Redis Commander (UI for Redis) - only in development
+  # Uncomment for development
+  # redis-commander:
+  #   image: rediscommander/redis-commander:latest
+  #   container_name: code-hive-redis-commander
+  #   restart: unless-stopped
+  #   environment:
+  #     REDIS_HOSTS: local:redis:6379
+  #     REDIS_PASSWORD: ${REDIS_PASSWORD:-redis}
+  #   ports:
+  #     - "8081:8081"
+  #   depends_on:
+  #     - redis
+  #   networks:
+  #     - code-hive-network
+
+  # Optional: pgAdmin (PostgreSQL Admin UI) - only in development
+  # Uncomment for development
+  # pgadmin:
+  #   image: dpage/pgadmin4:latest
+  #   container_name: code-hive-pgadmin
+  #   restart: unless-stopped
+  #   environment:
+  #     PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@codehive.local}
+  #     PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+  #     PGADMIN_CONFIG_SERVER_MODE: 'False'
+  #   ports:
+  #     - "8080:80"
+  #   depends_on:
+  #     - postgres
+  #   networks:
+  #     - code-hive-network
+  #   volumes:
+  #     - pgadmin_data:/var/lib/pgadmin
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  # pgadmin_data:
+  #   driver: local
+
+networks:
+  code-hive-network:
+    driver: bridge
+    name: code-hive-network

@@ -1,0 +1,133 @@
+version: '3.8'
+
+# Services Compose File
+# This file defines application services that depend on infrastructure.
+# Use this pattern for running services in Docker during development or testing.
+#
+# Usage:
+#   # Start infrastructure first
+#   docker-compose -f docker-compose.yml up -d
+#
+#   # Then start services
+#   docker-compose -f docker-compose.yml -f docker-compose.services.yml up
+#
+# Or use the convenience script: ./scripts/dev.sh
+
+services:
+  # Users Service
+  users-service:
+    build:
+      context: ../..
+      dockerfile: infra/docker/services/users.Dockerfile
+      target: development
+    container_name: code-hive-users-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-codehive}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis}@redis:6379
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../../apps/services/users:/app/apps/services/users
+      - ../../libs:/app/libs
+      - ../../package.json:/app/package.json
+      - ../../pnpm-lock.yaml:/app/pnpm-lock.yaml
+      - ../../pnpm-workspace.yaml:/app/pnpm-workspace.yaml
+      - ../../turbo.json:/app/turbo.json
+      - /app/node_modules
+      - /app/apps/services/users/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - code-hive-network
+    command: pnpm --filter @code-hive/users-service dev
+
+  # Auth Service
+  # auth-service:
+  #   build:
+  #     context: ../..
+  #     dockerfile: infra/docker/services/auth.Dockerfile
+  #     target: development
+  #   container_name: code-hive-auth-service
+  #   restart: unless-stopped
+  #   environment:
+  #     NODE_ENV: development
+  #     PORT: 3001
+  #     HOST: 0.0.0.0
+  #     DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-codehive}
+  #     REDIS_URL: redis://:${REDIS_PASSWORD:-redis}@redis:6379
+  #   ports:
+  #     - "3001:3001"
+  #   volumes:
+  #     - ../../apps/services/auth:/app/apps/services/auth
+  #     - ../../libs:/app/libs
+  #     - /app/node_modules
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   networks:
+  #     - code-hive-network
+  #   command: pnpm --filter @code-hive/auth-service dev
+
+  # Payment Service
+  # payment-service:
+  #   build:
+  #     context: ../..
+  #     dockerfile: infra/docker/services/payment.Dockerfile
+  #     target: development
+  #   container_name: code-hive-payment-service
+  #   restart: unless-stopped
+  #   environment:
+  #     NODE_ENV: development
+  #     PORT: 3002
+  #     HOST: 0.0.0.0
+  #     DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-codehive}
+  #     REDIS_URL: redis://:${REDIS_PASSWORD:-redis}@redis:6379
+  #   ports:
+  #     - "3002:3002"
+  #   volumes:
+  #     - ../../apps/services/payment:/app/apps/services/payment
+  #     - ../../libs:/app/libs
+  #     - /app/node_modules
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   networks:
+  #     - code-hive-network
+  #   command: pnpm --filter @code-hive/payment-service dev
+
+  # Gateway
+  # gateway:
+  #   build:
+  #     context: ../..
+  #     dockerfile: infra/docker/services/gateway.Dockerfile
+  #     target: development
+  #   container_name: code-hive-gateway
+  #   restart: unless-stopped
+  #   environment:
+  #     NODE_ENV: development
+  #     PORT: 4000
+  #     HOST: 0.0.0.0
+  #   ports:
+  #     - "4000:4000"
+  #   volumes:
+  #     - ../../apps/gateway:/app/apps/gateway
+  #     - ../../libs:/app/libs
+  #     - /app/node_modules
+  #   depends_on:
+  #     - users-service
+  #     - auth-service
+  #   networks:
+  #     - code-hive-network
+  #   command: pnpm --filter @code-hive/gateway dev
+
