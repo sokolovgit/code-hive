@@ -8,7 +8,11 @@ import {
   LoggerService,
 } from '@code-hive/nestjs/logger';
 import { SwaggerModule } from '@code-hive/nestjs/swagger';
-import { TelemetryModule, TraceInterceptor } from '@code-hive/nestjs/telemetry';
+import {
+  HttpSpanInterceptor,
+  TelemetryModule,
+  TraceInterceptor,
+} from '@code-hive/nestjs/telemetry';
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { ClsService } from 'nestjs-cls';
@@ -60,6 +64,10 @@ import * as schema from './users/users.schema';
     {
       provide: APP_INTERCEPTOR,
       useClass: TraceInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: HttpSpanInterceptor,
     },
     {
       provide: APP_FILTER,

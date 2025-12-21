@@ -144,13 +144,73 @@ export interface TelemetryModuleOptions {
      * Enable HTTP instrumentation
      * @default true
      */
-    http?: boolean;
+    http?:
+      | boolean
+      | {
+          /**
+           * Enable HTTP instrumentation
+           * @default true
+           */
+          enabled?: boolean;
+
+          /**
+           * Capture HTTP request/response headers
+           * @default true
+           */
+          captureHeaders?: boolean;
+
+          /**
+           * Capture HTTP request/response bodies
+           * @default false (to avoid memory issues with large bodies)
+           */
+          captureBodies?: boolean;
+
+          /**
+           * Maximum body size to capture (in bytes)
+           * Bodies larger than this will be truncated
+           * @default 10000 (10KB)
+           */
+          maxBodySize?: number;
+
+          /**
+           * Paths to ignore when capturing bodies
+           * Useful for skipping health checks, metrics, etc.
+           * @default ['/health', '/metrics', '/healthz', '/ready']
+           */
+          ignorePaths?: string[];
+        };
 
     /**
      * Enable PostgreSQL instrumentation
      * @default true
      */
-    pg?: boolean;
+    pg?:
+      | boolean
+      | {
+          /**
+           * Enable PostgreSQL instrumentation
+           * @default true
+           */
+          enabled?: boolean;
+
+          /**
+           * Capture query parameters
+           * @default true
+           */
+          captureParameters?: boolean;
+
+          /**
+           * Capture query text
+           * @default true
+           */
+          captureQueryText?: boolean;
+
+          /**
+           * Capture row count from query results
+           * @default true
+           */
+          captureRowCount?: boolean;
+        };
 
     /**
      * Enable Redis instrumentation

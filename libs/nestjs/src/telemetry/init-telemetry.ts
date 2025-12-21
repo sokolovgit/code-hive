@@ -1,4 +1,5 @@
 import { readFileSync } from 'fs';
+import { IncomingMessage, ServerResponse } from 'http';
 import * as os from 'os';
 import { join } from 'path';
 
@@ -15,6 +16,8 @@ import {
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 
 import { Environments } from '../enums';
+
+import type { Span } from '@opentelemetry/api';
 
 // Store the SDK instance so TelemetryModule can reuse it
 let globalSdk: NodeSDK | null = null;
@@ -73,6 +76,37 @@ export type InitTelemetryOptions = Partial<{
    * @default false
    */
   silent: boolean;
+
+  /**
+   * HTTP instrumentation options
+   */
+  httpInstrumentation?: {
+    /**
+     * Capture HTTP request/response headers
+     * @default true
+     */
+    captureHeaders?: boolean;
+
+    /**
+     * Capture HTTP request/response bodies
+     * @default false (to avoid memory issues with large bodies)
+     */
+    captureBodies?: boolean;
+
+    /**
+     * Maximum body size to capture (in bytes)
+     * Bodies larger than this will be truncated
+     * @default 10000 (10KB)
+     */
+    maxBodySize?: number;
+
+    /**
+     * Paths to ignore when capturing bodies
+     * Useful for skipping health checks, metrics, etc.
+     * @default ['/health', '/metrics', '/healthz', '/ready']
+     */
+    ignorePaths?: string[];
+  };
 }>;
 
 /**
@@ -159,17 +193,145 @@ export const initOpenTelemetry = (options: InitTelemetryOptions = {}) => {
     sampler = isDevelopment ? new AlwaysOnSampler() : new TraceIdRatioBasedSampler(0.1);
   }
 
+  // Configure HTTP instrumentation options
+  const httpOptions = options.httpInstrumentation || {};
+  const captureHeaders = httpOptions.captureHeaders !== false; // Default: true
+  const captureBodies = httpOptions.captureBodies === true; // Default: false
+  const maxBodySize = httpOptions.maxBodySize || 10000; // Default: 10KB
+  const ignorePaths = httpOptions.ignorePaths || ['/health', '/metrics', '/healthz', '/ready'];
+
+  // Helper function to safely capture body from request/response
+  const captureBody = (body: unknown, maxSize: number): string | undefined => {
+    if (!body) return undefined;
+
+    try {
+      let bodyStr: string;
+      if (typeof body === 'string') {
+        bodyStr = body;
+      } else if (Buffer.isBuffer(body)) {
+        bodyStr = body.toString('utf-8');
+      } else if (typeof body === 'object') {
+        bodyStr = JSON.stringify(body);
+      } else {
+        bodyStr = String(body);
+      }
+
+      if (bodyStr.length > maxSize) {
+        return `${bodyStr.substring(0, maxSize)}... [truncated, original size: ${bodyStr.length} bytes]`;
+      }
+      return bodyStr;
+    } catch {
+      return '[unable to serialize body]';
+    }
+  };
+
+  // Helper to check if path should be ignored
+  const shouldIgnorePath = (path: string): boolean => {
+    return ignorePaths.some((ignorePath) => path.includes(ignorePath));
+  };
+
   // Configure auto-instrumentations
   // Enable all by default - they will be patched before modules are loaded
   const instrumentations = getNodeAutoInstrumentations({
     '@opentelemetry/instrumentation-http': {
       enabled: true,
+      requestHook: (span: Span, request: IncomingMessage | unknown) => {
+        if (!captureHeaders && !captureBodies) return;
+
+        const req = request as IncomingMessage & {
+          headers?: Record<string, string | string[]>;
+          body?: unknown;
+          url?: string;
+        };
+
+        // Capture request headers
+        if (captureHeaders && req.headers) {
+          const headers = req.headers;
+          Object.keys(headers).forEach((key) => {
+            const value = headers[key];
+            if (value !== undefined) {
+              span.setAttribute(
+                `http.request.header.${key.toLowerCase()}`,
+                Array.isArray(value) ? value.join(', ') : value
+              );
+            }
+          });
+        }
+
+        // Capture request body (if available and not ignored)
+        if (captureBodies && req.url) {
+          const url = req.url || '';
+          if (!shouldIgnorePath(url)) {
+            // For incoming requests, body is typically parsed by NestJS
+            // We can try to get it from the request object if it's been parsed
+            if (req.body !== undefined) {
+              const bodyStr = captureBody(req.body, maxBodySize);
+              if (bodyStr) {
+                span.setAttribute('http.request.body', bodyStr);
+              }
+            }
+          }
+        }
+      },
+      responseHook: (span: Span, response: ServerResponse | IncomingMessage) => {
+        if (!captureHeaders && !captureBodies) return;
+
+        // Response hook receives ServerResponse for server-side or IncomingMessage for client-side
+        // For server responses, we need to use getHeaders() method
+        if (captureHeaders) {
+          try {
+            let headers: Record<string, string | string[] | undefined> | undefined;
+
+            // Check if it's a ServerResponse (has getHeaders method)
+            if ('getHeaders' in response && typeof response.getHeaders === 'function') {
+              headers = response.getHeaders() as Record<string, string | string[] | undefined>;
+            }
+            // Fallback to headers property if available
+            else if ('headers' in response) {
+              headers = response.headers as Record<string, string | string[] | undefined>;
+            }
+
+            if (headers) {
+              Object.keys(headers).forEach((key) => {
+                const value = headers![key];
+                if (value !== undefined) {
+                  span.setAttribute(
+                    `http.response.header.${key.toLowerCase()}`,
+                    Array.isArray(value) ? value.join(', ') : String(value)
+                  );
+                }
+              });
+            }
+          } catch {
+            // Silently fail if headers can't be accessed
+          }
+        }
+
+        // Note: Response bodies are not available in responseHook because they're streamed
+        // To capture response bodies, use a NestJS interceptor that has access to the response data
+      },
     },
     '@opentelemetry/instrumentation-pg': {
       enabled: true,
       requireParentSpan: false,
       enhancedDatabaseReporting: true,
       addSqlCommenterCommentToQueries: false,
+      responseHook: (span: Span, responseInfo: { data?: unknown; rowCount?: number }) => {
+        // Capture row count if available
+        if (responseInfo.rowCount !== undefined) {
+          span.setAttribute('db.rows_affected', responseInfo.rowCount);
+          span.setAttribute('db.result.count', responseInfo.rowCount);
+        }
+
+        // Add query execution metadata
+        if (responseInfo.data !== undefined) {
+          const resultType = Array.isArray(responseInfo.data) ? 'array' : typeof responseInfo.data;
+          span.setAttribute('db.result.type', resultType);
+          if (Array.isArray(responseInfo.data)) {
+            span.setAttribute('db.result.length', responseInfo.data.length);
+          }
+        }
+      },
     },
     '@opentelemetry/instrumentation-redis': {
       enabled: true,
