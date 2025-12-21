@@ -1,4 +1,5 @@
 import { BaseConfigService } from '@code-hive/nestjs/config';
+import { DrizzleModuleOptions } from '@code-hive/nestjs/database/drizzle';
 import { Environments } from '@code-hive/nestjs/enums';
 import { HttpLoggingInterceptorOptions, LoggerModuleOptions } from '@code-hive/nestjs/logger';
 import { SwaggerModuleOptions } from '@code-hive/nestjs/swagger';
@@ -24,6 +25,10 @@ export class ConfigService extends BaseConfigService<EnvType> {
     path: this.env.DOCS_PATH,
   };
 
+  database = {
+    url: this.env.DATABASE_URL,
+  };
+
   globalPrefix = 'api/v1';
 
   isProduction(): boolean {
@@ -43,6 +48,25 @@ export class ConfigService extends BaseConfigService<EnvType> {
     return {
       environment: this.server.env,
       appName: this.getAppName(),
+    };
+  }
+
+  getDrizzleOptions(): DrizzleModuleOptions {
+    return {
+      connection: this.database.url,
+      // schema: ...
+      logQueries: this.isDevelopment(),
+      pool: {
+        min: 2,
+        max: 10,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 5000,
+      },
+      healthCheck: true,
+      retry: {
+        maxRetries: 3,
+        retryDelay: 1000,
+      },
     };
   }
 

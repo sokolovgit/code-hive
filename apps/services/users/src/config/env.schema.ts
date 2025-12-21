@@ -16,6 +16,8 @@ export const validationSchema = z.object({
     .or(z.boolean())
     .default(true),
   DOCS_PATH: z.string().default('api/docs'),
+
+  DATABASE_URL: z.url(),
 });
 
 export type EnvType = z.infer<typeof validationSchema>;

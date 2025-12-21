@@ -7,11 +7,14 @@ export default [
       '*.config.js',
       '*.config.cjs',
       '*.config.mjs',
+      '*.config.ts',
+      'drizzle.config.ts',
     ],
   },
   ...baseConfig,
   {
     files: ['**/*.ts', '**/*.tsx'],
+    ignores: ['drizzle.config.ts', '*.config.ts'],
     settings: {
       'import/resolver': {
         typescript: {
