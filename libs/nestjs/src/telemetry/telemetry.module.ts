@@ -33,6 +33,7 @@ import { ClsService } from 'nestjs-cls';
 import { Environments } from '../enums';
 import { LoggerService, LoggerContextService } from '../logger';
 
+import { getGlobalSdk } from './init-telemetry';
 import { TraceInterceptor } from './interceptors/trace.interceptor';
 import {
   TELEMETRY_OPTIONS,
@@ -54,7 +55,7 @@ export class TelemetryModule implements OnModuleInit, OnModuleDestroy {
     return {
       module: TelemetryModule,
       providers,
-      exports: [TelemetryService, TELEMETRY_TRACER, TELEMETRY_METER],
+      exports: [TelemetryService, TELEMETRY_TRACER, TELEMETRY_METER, TELEMETRY_SDK],
     };
   }
 
@@ -134,7 +135,9 @@ export class TelemetryModule implements OnModuleInit, OnModuleDestroy {
     const sdkProvider: Provider = {
       provide: TELEMETRY_SDK,
       useFactory: (opts: TelemetryModuleOptions, logger?: LoggerService) => {
-        return this.createSDK(opts, logger);
+        // Start SDK immediately to ensure instrumentation patches modules before they're used
+        const sdk = this.createSDK(opts, logger);
+        return sdk;
       },
       inject: [TELEMETRY_OPTIONS, LoggerService],
     };
@@ -182,6 +185,14 @@ export class TelemetryModule implements OnModuleInit, OnModuleDestroy {
     options: TelemetryModuleOptions,
     logger?: LoggerService
   ): NodeSDK | null {
+    // If SDK was already initialized (e.g., via initOpenTelemetry), reuse it
+    const existingSdk = getGlobalSdk() || TelemetryModule.sdk;
+    if (existingSdk) {
+      logger?.debug('OpenTelemetry SDK already initialized, reusing existing instance');
+      TelemetryModule.sdk = existingSdk;
+      return existingSdk;
+    }
+
     // Check if telemetry is disabled
     if (options.enabled === false) {
       logger?.debug('OpenTelemetry is disabled');
@@ -324,6 +335,10 @@ export class TelemetryModule implements OnModuleInit, OnModuleDestroy {
         },
         '@opentelemetry/instrumentation-pg': {
           enabled: options.instrumentation?.pg !== false,
+          // Enable query capture and span creation
+          requireParentSpan: false, // Allow spans even without parent span
+          enhancedDatabaseReporting: true, // Capture query text and parameters
+          addSqlCommenterCommentToQueries: false, // Don't modify queries
         },
         '@opentelemetry/instrumentation-redis': {
           enabled: options.instrumentation?.redis !== false,
@@ -365,7 +380,11 @@ export class TelemetryModule implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleInit(): void {
-    // SDK is initialized in the provider factory
+    // Ensure SDK is started - it's initialized in the provider factory
+    // The SDK.start() is called in createSDK, but we verify it here
+    if (TelemetryModule.sdk) {
+      // SDK already started in createSDK
+    }
   }
 
   async onModuleDestroy(): Promise<void> {

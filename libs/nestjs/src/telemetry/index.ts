@@ -4,3 +4,4 @@ export * from './telemetry.types';
 export * from './telemetry.constants';
 export * from './decorators';
 export * from './interceptors';
+export * from './init-telemetry';
