@@ -4,10 +4,23 @@ import { DocumentBuilder, SwaggerModule as NestSwaggerModule } from '@nestjs/swa
 import { SWAGGER_OPTIONS } from './swagger.constants';
 import baseTheme from './themes/base';
 import draculaTheme from './themes/dracula';
+import gruvboxTheme from './themes/gruvbox';
+import monokaiTheme from './themes/monokai';
+import nordDarkTheme from './themes/nord-dark';
+import oneDarkTheme from './themes/one-dark';
+import sepiaTheme from './themes/sepia';
+import universalDarkTheme from './themes/universal-dark';
 
 import type { ModuleMetadata } from '@nestjs/common/interfaces';
 
-export type Theme = 'default' | 'dracula';
+export type Theme =
+  | 'dracula'
+  | 'gruvbox'
+  | 'nord-dark'
+  | 'one-dark'
+  | 'sepia'
+  | 'universal-dark'
+  | 'monokai';
 
 export interface SwaggerAuthConfig {
   /**
@@ -49,15 +62,15 @@ export interface SwaggerModuleOptions {
    * Authentication configuration
    */
   auth?: SwaggerAuthConfig;
-  /**
-   * Additional Swagger setup options
-   */
+
   /**
    * Theme for the Swagger UI
-   * @default 'default'
    */
   theme?: Theme;
 
+  /**
+   * Additional Swagger setup options
+   */
   swaggerOptions?: {
     explorer?: boolean;
     jsonDocumentUrl?: string;
@@ -154,21 +167,36 @@ export class SwaggerModule {
 
     NestSwaggerModule.setup(docsPath, app, document, {
       ...swaggerOptions,
-      customCss: this.getThemeCss(options.theme || 'default'),
+      customCss: options.theme ? this.getThemeCss(options.theme) : undefined,
     });
   }
 
   private static getThemeCss(theme: Theme): string {
-    // Always include base theme CSS
     let css = baseTheme;
 
-    // Add theme-specific CSS variables
     switch (theme) {
       case 'dracula':
         css += '\n' + draculaTheme;
         break;
+      case 'gruvbox':
+        css += '\n' + gruvboxTheme;
+        break;
+      case 'nord-dark':
+        css += '\n' + nordDarkTheme;
+        break;
+      case 'one-dark':
+        css += '\n' + oneDarkTheme;
+        break;
+      case 'sepia':
+        css += '\n' + sepiaTheme;
+        break;
+      case 'universal-dark':
+        css += '\n' + universalDarkTheme;
+        break;
+      case 'monokai':
+        css += '\n' + monokaiTheme;
+        break;
       default:
-        // For default theme, only base CSS is applied (no custom variables)
         break;
     }
 

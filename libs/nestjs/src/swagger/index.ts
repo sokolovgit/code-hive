@@ -1,2 +1,4 @@
 export * from './swagger.module';
 export * from './swagger.constants';
+
+export * from './docs';
