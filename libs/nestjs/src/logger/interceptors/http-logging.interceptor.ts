@@ -1,5 +1,6 @@
 import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common';
 import { Inject, Optional } from '@nestjs/common';
+import { trace } from '@opentelemetry/api';
 import { Request, Response } from 'express';
 import { ClsService } from 'nestjs-cls';
 import { Observable } from 'rxjs';
@@ -88,18 +89,37 @@ export class HttpLoggingInterceptor implements NestInterceptor {
     const requestIdStr = Array.isArray(requestIdHeader) ? requestIdHeader[0] : requestIdHeader;
     const requestId = requestIdStr || uuid();
 
-    // Extract trace context
+    // Extract trace context from headers
     const traceContext = extractTraceContext(request.headers);
 
-    // Generate span ID if not present
-    const spanId = traceContext.spanId || uuid();
+    // Get active span from OpenTelemetry (auto-instrumentation creates this)
+    // This ensures we use the actual trace/span IDs from OpenTelemetry
+    const activeSpan = trace.getActiveSpan();
+    let otelTraceId: string | undefined;
+    let otelSpanId: string | undefined;
+    let otelParentSpanId: string | undefined;
+
+    if (activeSpan) {
+      const spanContext = activeSpan.spanContext();
+      otelTraceId = spanContext.traceId;
+      otelSpanId = spanContext.spanId;
+      // Get parent span ID from trace context if available
+      otelParentSpanId = traceContext.parentSpanId;
+    }
+
+    // Prefer OpenTelemetry trace IDs over extracted headers (more accurate)
+    const finalTraceId = otelTraceId || traceContext.traceId;
+    const finalSpanId = otelSpanId || traceContext.spanId || uuid();
+    const finalParentSpanId = otelParentSpanId || traceContext.parentSpanId;
 
     // Add request ID and trace context to response headers
     response.setHeader('x-request-id', requestId);
-    if (traceContext.traceId) {
-      response.setHeader('x-trace-id', traceContext.traceId);
+    if (finalTraceId) {
+      response.setHeader('x-trace-id', finalTraceId);
+      // Also set traceparent header for W3C Trace Context
+      response.setHeader('traceparent', `00-${finalTraceId}-${finalSpanId}-01`);
     }
-    response.setHeader('x-span-id', spanId);
+    response.setHeader('x-span-id', finalSpanId);
 
     // Set context in CLS for automatic inclusion in all logs
     const user = (request as Request & { user?: { id?: string; userId?: string; role?: string } })
@@ -112,8 +132,10 @@ export class HttpLoggingInterceptor implements NestInterceptor {
       userId,
       userRole,
       component: 'http',
-      ...traceContext,
-      spanId,
+      traceId: finalTraceId,
+      spanId: finalSpanId,
+      parentSpanId: finalParentSpanId,
+      ...(traceContext.traceFlags && { traceFlags: traceContext.traceFlags }),
     };
 
     // Set context in CLS

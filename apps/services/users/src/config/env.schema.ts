@@ -18,6 +18,9 @@ export const validationSchema = z.object({
   DOCS_PATH: z.string().default('api/docs'),
 
   DATABASE_URL: z.url(),
+
+  // OpenTelemetry (optional - works out of the box with defaults)
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.url().optional(),
 });
 
 export type EnvType = z.infer<typeof validationSchema>;

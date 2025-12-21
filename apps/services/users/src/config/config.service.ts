@@ -3,6 +3,7 @@ import { DrizzleModuleOptions } from '@code-hive/nestjs/database/drizzle';
 import { Environments } from '@code-hive/nestjs/enums';
 import { HttpLoggingInterceptorOptions, LoggerModuleOptions } from '@code-hive/nestjs/logger';
 import { SwaggerModuleOptions } from '@code-hive/nestjs/swagger';
+import { TelemetryModuleOptions } from '@code-hive/nestjs/telemetry';
 import { Injectable } from '@nestjs/common';
 
 import { EnvType } from './env.schema';
@@ -89,6 +90,28 @@ export class ConfigService extends BaseConfigService<EnvType> {
       logResponseBody: true,
       logQuery: true,
       logHeaders: true,
+    };
+  }
+
+  getTelemetryOptions(): TelemetryModuleOptions {
+    // Simple, automatic configuration with sensible defaults
+    return {
+      serviceName: this.getAppName(),
+      serviceVersion: this.package.version,
+      environment: this.server.env,
+      tracing: {
+        sampler: this.isProduction() ? 0.1 : 'always', // 10% in prod, 100% in dev
+        exporter: {
+          endpoint: this.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317',
+        },
+      },
+      metrics: {
+        exporter: {
+          type: 'otlp',
+          endpoint: this.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317',
+          protocol: 'grpc',
+        },
+      },
     };
   }
 

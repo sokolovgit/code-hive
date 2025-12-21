@@ -12,7 +12,8 @@ export class UsersService {
    * Find all users
    */
   async findAll(): Promise<User[]> {
-    return this.db.select().from(users);
+    const result = await this.db.select().from(users);
+    return result as User[];
   }
 
   /**

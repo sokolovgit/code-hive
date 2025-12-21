@@ -8,6 +8,7 @@ import {
   LoggerService,
 } from '@code-hive/nestjs/logger';
 import { SwaggerModule } from '@code-hive/nestjs/swagger';
+import { TelemetryModule, TraceInterceptor } from '@code-hive/nestjs/telemetry';
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { ClsService } from 'nestjs-cls';
@@ -21,7 +22,6 @@ import * as schema from './users/users.schema';
 @Module({
   controllers: [PingController],
   imports: [
-    // Set up CLS first with Drizzle transactional plugin
     ClsModuleWrapper.forRoot({
       plugins: [DrizzleModule.getTransactionalPlugin()],
     }),
@@ -32,6 +32,10 @@ import * as schema from './users/users.schema';
     LoggerModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => config.getLoggerOptions(),
+    }),
+    TelemetryModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => config.getTelemetryOptions(),
     }),
     SwaggerModule.forRootAsync({
       inject: [ConfigService],
@@ -52,6 +56,10 @@ import * as schema from './users/users.schema';
       inject: [LoggerService, ConfigService, ClsService],
       useFactory: (logger: LoggerService, config: ConfigService, cls: ClsService) =>
         new HttpLoggingInterceptor(logger, cls, config.getHttpLoggingInterceptorOptions()),
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: TraceInterceptor,
     },
     {
       provide: APP_FILTER,
