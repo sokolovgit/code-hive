@@ -14,6 +14,8 @@ import { validationSchema } from './config/env.schema';
 import { PingController } from './ping.controller';
 
 @Module({
+  // test controller
+  controllers: [PingController],
   imports: [
     ConfigModule.forRoot({
       validationSchema,
@@ -28,7 +30,6 @@ import { PingController } from './ping.controller';
       useFactory: (config: ConfigService) => config.getSwaggerOptions(),
     }),
   ],
-  controllers: [PingController],
   providers: [
     {
       provide: APP_INTERCEPTOR,
