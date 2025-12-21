@@ -1,4 +1,4 @@
-export default `
+export const draculaTheme = `
 :root {
     /* primary colors */
     --swagger-color: #86ff54;

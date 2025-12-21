@@ -1,5 +1,5 @@
 /* https://github.com/oqo0/swagger-themes */
-export default `
+export const sepiaTheme = `
 :root {
     /* primary colors */
     --swagger-color: #91bb26;

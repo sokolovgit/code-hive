@@ -1,5 +1,5 @@
 /* https://github.com/oqo0/swagger-themes */
-export default `
+export const nordDarkTheme = `
 :root {
     /* primary colors */
     --swagger-color: #88C0D0;

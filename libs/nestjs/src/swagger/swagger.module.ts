@@ -1,96 +1,16 @@
 import { DynamicModule, INestApplication, Module, Provider, Type } from '@nestjs/common';
-import { DocumentBuilder, SwaggerModule as NestSwaggerModule } from '@nestjs/swagger';
+import { SwaggerModule as NestSwaggerModule } from '@nestjs/swagger';
 
+import { DocumentBuilderConfig } from './config';
 import { SWAGGER_OPTIONS } from './swagger.constants';
-import baseTheme from './themes/base';
-import draculaTheme from './themes/dracula';
-import gruvboxTheme from './themes/gruvbox';
-import monokaiTheme from './themes/monokai';
-import nordDarkTheme from './themes/nord-dark';
-import oneDarkTheme from './themes/one-dark';
-import sepiaTheme from './themes/sepia';
-import universalDarkTheme from './themes/universal-dark';
+import { ScalarSetup, SwaggerUISetup } from './ui';
 
-import type { ModuleMetadata } from '@nestjs/common/interfaces';
-
-export type Theme =
-  | 'dracula'
-  | 'gruvbox'
-  | 'nord-dark'
-  | 'one-dark'
-  | 'sepia'
-  | 'universal-dark'
-  | 'monokai';
-
-export interface SwaggerAuthConfig {
-  /**
-   * Bearer token authentication configuration
-   */
-  bearer?: {
-    name?: string;
-    description?: string;
-  };
-  /**
-   * Cookie authentication configuration
-   */
-  cookie?: {
-    name?: string;
-    description?: string;
-  };
-}
-
-export interface SwaggerModuleOptions {
-  /**
-   * Base path for the Swagger UI (e.g., 'api/docs')
-   * @default 'api/docs'
-   */
-  path?: string;
-  /**
-   * API title
-   */
-  title: string;
-  /**
-   * API description
-   */
-  description?: string;
-  /**
-   * API version
-   * @default '1.0'
-   */
-  version?: string;
-  /**
-   * Authentication configuration
-   */
-  auth?: SwaggerAuthConfig;
-
-  /**
-   * Theme for the Swagger UI
-   */
-  theme?: Theme;
-
-  /**
-   * Additional Swagger setup options
-   */
-  swaggerOptions?: {
-    explorer?: boolean;
-    jsonDocumentUrl?: string;
-    [key: string]: unknown;
-  };
-}
-
-export interface SwaggerModuleAsyncOptions<TFactoryArgs extends unknown[] = unknown[]> extends Pick<
-  ModuleMetadata,
-  'imports'
-> {
-  /**
-   * Dependencies to inject into `useFactory` (e.g. `ConfigService`)
-   */
-  inject?: { [K in keyof TFactoryArgs]: Type<TFactoryArgs[K]> | string | symbol };
-  /**
-   * Factory returning the `SwaggerModuleOptions` (sync or async)
-   */
-  useFactory: (...args: TFactoryArgs) => SwaggerModuleOptions | Promise<SwaggerModuleOptions>;
-}
+import type {
+  SwaggerModuleAsyncOptions,
+  SwaggerModuleOptions,
+  SwaggerModuleOptionsWithScalar,
+  SwaggerModuleOptionsWithSwaggerUI,
+} from './types';
 
 @Module({})
 export class SwaggerModule {
@@ -125,81 +45,19 @@ export class SwaggerModule {
   }
 
   /**
-   * Setup Swagger for the given NestJS application
+   * Setup Swagger or Scalar UI for the given NestJS application
    * This should be called in your main.ts after app initialization
    */
   static async setup(app: INestApplication, options: SwaggerModuleOptions): Promise<void> {
-    const docsPath = options.path || 'api/docs';
-    const config = new DocumentBuilder()
-      .setTitle(options.title)
-      .setDescription(options.description || options.title)
-      .setVersion(options.version || '1.0');
-
-    // Add Bearer Auth if configured
-    if (options.auth?.bearer) {
-      config.addBearerAuth(
-        {
-          type: 'http',
-          scheme: 'bearer',
-          bearerFormat: 'JWT',
-          description: options.auth.bearer.description || 'Access token',
-        },
-        options.auth.bearer.name || 'access-token'
-      );
-    }
-
-    // Add Cookie Auth if configured
-    if (options.auth?.cookie) {
-      config.addCookieAuth(options.auth.cookie.name || 'refresh-token', {
-        type: 'http',
-        scheme: 'bearer',
-        description: options.auth.cookie.description || 'Refresh token',
-      });
-    }
-
+    const config = DocumentBuilderConfig.build(options);
     const document = NestSwaggerModule.createDocument(app, config.build());
 
-    const swaggerOptions = {
-      explorer: true,
-      jsonDocumentUrl: `${docsPath}.json`,
-      ...options.swaggerOptions,
-    };
+    const uiProvider = options.ui || 'swagger-ui';
 
-    NestSwaggerModule.setup(docsPath, app, document, {
-      ...swaggerOptions,
-      customCss: options.theme ? this.getThemeCss(options.theme) : undefined,
-    });
-  }
-
-  private static getThemeCss(theme: Theme): string {
-    let css = baseTheme;
-
-    switch (theme) {
-      case 'dracula':
-        css += '\n' + draculaTheme;
-        break;
-      case 'gruvbox':
-        css += '\n' + gruvboxTheme;
-        break;
-      case 'nord-dark':
-        css += '\n' + nordDarkTheme;
-        break;
-      case 'one-dark':
-        css += '\n' + oneDarkTheme;
-        break;
-      case 'sepia':
-        css += '\n' + sepiaTheme;
-        break;
-      case 'universal-dark':
-        css += '\n' + universalDarkTheme;
-        break;
-      case 'monokai':
-        css += '\n' + monokaiTheme;
-        break;
-      default:
-        break;
+    if (uiProvider === 'scalar') {
+      ScalarSetup.setup(app, document, options as SwaggerModuleOptionsWithScalar);
+    } else {
+      SwaggerUISetup.setup(app, document, options as SwaggerModuleOptionsWithSwaggerUI);
     }
-
-    return css;
   }
 }

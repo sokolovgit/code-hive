@@ -1,4 +1,4 @@
-export default `
+export const baseTheme = `
 /* primary colors */
 
 .swagger-ui .topbar .download-url-wrapper .select-label select {
