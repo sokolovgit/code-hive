@@ -161,7 +161,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # Loki (Log Aggregation) - Optional
+  # Loki (Log Aggregation)
   loki:
     image: grafana/loki:latest
     container_name: code-hive-loki
@@ -174,13 +174,36 @@ services:
     networks:
       - code-hive-network
     healthcheck:
-      # Simple check: verify loki process is running
-      # The /ready endpoint works but requires HTTP tools, process check is sufficient
       test: ['CMD', '/usr/bin/loki', '-version']
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 20s
+    labels:
+      logging: promtail
+
+  # Promtail (Log Shipper)
+  promtail:
+    image: grafana/promtail:latest
+    container_name: code-hive-promtail
+    restart: unless-stopped
+    command: ['-config.file=/etc/promtail/config.yaml']
+    volumes:
+      - ./docker/promtail/config.yaml:/etc/promtail/config.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/log/app:/var/log/app:ro
+      - promtail_positions:/tmp
+    ports:
+      - '9080:9080'
+    depends_on:
+      - loki
+    networks:
+      - code-hive-network
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:9080/ready']
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   # Grafana (Visualization)
   grafana:
@@ -216,6 +239,8 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    labels:
+      logging: promtail
 
 volumes:
   postgres_data:
@@ -229,6 +254,8 @@ volumes:
   loki_data:
     driver: local
   grafana_data:
+    driver: local
+  promtail_positions:
     driver: local
   # pgadmin_data:
   #   driver: local

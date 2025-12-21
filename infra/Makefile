@@ -41,3 +41,24 @@ health: ## Check health of all services
 	@docker-compose exec -T postgres pg_isready -U postgres || echo "❌ PostgreSQL not ready"
 	@docker-compose exec -T redis redis-cli ping || echo "❌ Redis not ready"
 
+services-up: ## Start application services (users-service, etc.)
+	@echo "🚀 Starting application services..."
+	docker-compose -f docker-compose.yml -f docker-compose.services.yml up -d
+	@echo "✅ Services started"
+	@echo "📊 View logs: make services-logs"
+
+services-down: ## Stop application services
+	docker-compose -f docker-compose.yml -f docker-compose.services.yml down
+	@echo "🛑 Services stopped"
+
+services-logs: ## Show service logs (usage: make services-logs SERVICE=users-service)
+	docker-compose -f docker-compose.yml -f docker-compose.services.yml logs -f $(SERVICE)
+
+services-ps: ## Show service status
+	docker-compose -f docker-compose.yml -f docker-compose.services.yml ps
+
+services-build: build-base ## Build and start services
+	@echo "🔨 Building services..."
+	docker-compose -f docker-compose.yml -f docker-compose.services.yml build
+	@echo "✅ Services built"
+

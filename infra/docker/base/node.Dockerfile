@@ -8,7 +8,8 @@ WORKDIR /app
 
 # Copy workspace files
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY turbo.json ./
+# Copy turbo.json (optional - will fail silently if not present)
+COPY turbo.json* ./
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile

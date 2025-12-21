@@ -1,0 +1,58 @@
+# Services Compose File
+# This file defines application services that depend on infrastructure.
+# Use this pattern for running services in Docker during development or testing.
+#
+# Usage:
+#   # Start infrastructure first
+#   docker-compose -f docker-compose.yml up -d
+#
+#   # Then start services
+#   docker-compose -f docker-compose.yml -f docker-compose.services.yml up
+
+services:
+  # Users Service
+  users-service:
+    build:
+      context: ..
+      dockerfile: infra/docker/services/users.Dockerfile
+      target: development
+    container_name: code-hive-users-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/users-service
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis}@redis:6379
+      # OpenTelemetry configuration
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_SERVICE_NAME: '@code-hive/users-service'
+      # Application name and version for telemetry
+      APP_NAME: '@code-hive/users-service'
+      APP_VERSION: 1.0.0
+    ports:
+      - '3000:3000'
+    volumes:
+      - ../apps/services/users:/app/apps/services/users
+      - ../libs:/app/libs
+      - ../package.json:/app/package.json
+      - ../pnpm-lock.yaml:/app/pnpm-lock.yaml
+      - ../pnpm-workspace.yaml:/app/pnpm-workspace.yaml
+      - ../turbo.json:/app/turbo.json
+      - ../tsconfig.base.json:/app/tsconfig.base.json
+      - /app/node_modules
+      - /app/apps/services/users/node_modules
+      - /app/libs/nestjs/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_healthy
+    networks:
+      - code-hive-network
+    command: pnpm --filter @code-hive/users-service dev
+    labels:
+      logging: promtail
+      service: users-service

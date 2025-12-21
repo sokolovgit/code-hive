@@ -1,0 +1,128 @@
+# Dependencies - exclude all node_modules
+node_modules
+**/node_modules
+.pnp
+.pnp.js
+
+# Build outputs
+dist
+**/dist
+build
+**/build
+.next
+out
+.nx
+.turbo
+*.tsbuildinfo
+**/*.tsbuildinfo
+
+# Python (if any)
+__pycache__
+**/__pycache__
+*.pyc
+**/*.pyc
+.python-version
+venv
+**/venv
+env
+**/env
+
+# Testing
+coverage/
+**/coverage/
+.nyc_output/
+**/.nyc_output/
+*.test.ts
+*.spec.ts
+**/*.test.ts
+**/*.spec.ts
+
+# Logs
+*.log
+**/*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+**/.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+**/.idea/
+**/.vscode/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+**/.git/
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+**/Dockerfile*
+**/docker-compose*.yml
+
+# Documentation (not needed in Docker)
+*.md
+**/*.md
+!README.md
+docs/
+**/docs/
+
+# Temporary files
+*.tmp
+.cache/
+**/.cache/
+**/*.tmp
+
+# Husky
+.husky
+--version
+**/.husky
+**/--version
+
+# Large directories that shouldn't be in Docker
+apps/web
+apps/admin
+**/apps/web
+**/apps/admin
+tools
+**/tools
+# Exclude most of infra, but keep docker files needed for builds
+infra/**
+!infra/docker/**
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+.circleci/
+
+# Misc
+*.zip
+*.tar.gz
+*.tgz
+**/*.zip
+**/*.tar.gz
+
+# Keep only what's needed for build
+# Source files, configs, and package files are included
+
