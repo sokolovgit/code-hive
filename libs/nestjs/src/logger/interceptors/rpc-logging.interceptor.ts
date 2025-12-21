@@ -1,11 +1,10 @@
 import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common';
 import { Inject, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
-import { Observable } from 'rxjs';
+import { Observable, defer } from 'rxjs';
 import { tap, catchError } from 'rxjs/operators';
 
 import { uuid } from '../../utils';
-import { loggerContext } from '../logger.context';
 import { LoggerService } from '../logger.service';
 
 export interface RpcLoggingInterceptorOptions {
@@ -70,64 +69,72 @@ export class RpcLoggingInterceptor implements NestInterceptor {
       component: 'rpc',
     };
 
-    // Set context in CLS
-    Object.entries(loggerCtx).forEach(([key, value]) => {
-      if (value !== undefined) {
-        this.cls.set(key, value);
-      }
-    });
-
-    return loggerContext.run(loggerCtx, () => {
-      const requestLog: Record<string, unknown> = {
-        pattern,
-        transport: rpcContext.getContext()?.transport || 'unknown',
-        ...(logRequestData &&
-          data && {
-            data: this.truncateData(data, maxDataLength),
-          }),
-      };
-
-      this.logger.info('Incoming RPC request', requestLog);
-
-      return next.handle().pipe(
-        tap((responseData: unknown) => {
-          const duration = Date.now() - startTime;
-          const responseLog: Record<string, unknown> = {
-            pattern,
-            duration: `${duration}ms`,
-          };
-          if (logResponseData && responseData) {
-            responseLog.responseData = this.truncateData(responseData, maxDataLength);
+    // For RPC, we need to create a CLS context since there's no HTTP middleware
+    // Use defer() to ensure CLS context is active when Observable is subscribed to
+    return defer(() => {
+      // Create a new CLS context for this RPC call
+      // Note: ClsService.run() creates a new context, but for Observables we use defer()
+      // to ensure context is active during subscription
+      return this.cls.run(() => {
+        // Set context values in the new CLS context
+        Object.entries(loggerCtx).forEach(([key, value]) => {
+          if (value !== undefined) {
+            this.cls.set(key, value);
           }
+        });
 
-          this.logger.info('RPC response', responseLog);
-        }),
-        catchError((error: unknown) => {
-          const duration = Date.now() - startTime;
-          const errorInfo: Record<string, unknown> = {
-            name: error instanceof Error ? error.name : 'UnknownError',
-            message: error instanceof Error ? error.message : 'Unknown error',
-          };
-          if (error instanceof Error && error.stack) {
-            errorInfo.stack = error.stack;
-          }
-          if (error && typeof error === 'object' && 'code' in error) {
-            errorInfo.code = (error as { code?: unknown }).code;
-          }
+        // Execute the RPC handler within the CLS context
+        const requestLog: Record<string, unknown> = {
+          pattern,
+          transport: rpcContext.getContext()?.transport || 'unknown',
+          ...(logRequestData &&
+            data && {
+              data: this.truncateData(data, maxDataLength),
+            }),
+        };
 
-          const errorLog: Record<string, unknown> = {
-            pattern,
-            duration: `${duration}ms`,
-            error: errorInfo,
-          };
+        this.logger.info('Incoming RPC request', requestLog);
 
-          this.logger.error('RPC error', undefined, 'RpcError');
-          this.logger.info('RPC error details', errorLog);
+        return next.handle();
+      });
+    }).pipe(
+      tap((responseData: unknown) => {
+        const duration = Date.now() - startTime;
+        const responseLog: Record<string, unknown> = {
+          pattern,
+          duration: `${duration}ms`,
+        };
+        if (logResponseData && responseData) {
+          responseLog.responseData = this.truncateData(responseData, maxDataLength);
+        }
 
-          throw error;
-        })
-      );
-    });
+        this.logger.info('RPC response', responseLog);
+      }),
+      catchError((error: unknown) => {
+        const duration = Date.now() - startTime;
+        const errorInfo: Record<string, unknown> = {
+          name: error instanceof Error ? error.name : 'UnknownError',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        };
+        if (error instanceof Error && error.stack) {
+          errorInfo.stack = error.stack;
+        }
+        if (error && typeof error === 'object' && 'code' in error) {
+          errorInfo.code = (error as { code?: unknown }).code;
+        }
+
+        const errorLog: Record<string, unknown> = {
+          pattern,
+          duration: `${duration}ms`,
+          error: errorInfo,
+        };
+
+        this.logger.error('RPC error', undefined, 'RpcError');
+        this.logger.info('RPC error details', errorLog);
+
+        throw error;
+      })
+    );
   }
 
   private truncateData(data: unknown, maxLength: number): unknown {

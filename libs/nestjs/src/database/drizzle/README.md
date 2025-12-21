@@ -30,13 +30,19 @@ In your `app.module.ts`:
 
 ```typescript
 import { Module } from '@nestjs/common';
-import { DrizzleModule, DrizzleClsModule } from '@code-hive/nestjs/database/drizzle';
+import { ClsModule } from '@code-hive/nestjs/cls';
+import { DrizzleModule } from '@code-hive/nestjs/database/drizzle';
 import { LoggerModule } from '@code-hive/nestjs/logger';
 import { ConfigModule, ConfigService } from '@code-hive/nestjs/config';
 
 @Module({
   imports: [
-    // Logger must be imported first (or at least before DrizzleClsModule)
+    // Set up CLS first with Drizzle transactional plugin
+    ClsModule.forRoot({
+      plugins: [DrizzleModule.getTransactionalPlugin()],
+    }),
+
+    // Logger module
     LoggerModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => config.getLoggerOptions(),
@@ -54,9 +60,6 @@ import { ConfigModule, ConfigService } from '@code-hive/nestjs/config';
         },
       }),
     }),
-
-    // CLS module with transactional support (optional but recommended)
-    DrizzleClsModule.forRoot(),
   ],
 })
 export class AppModule {}
@@ -624,10 +627,10 @@ export class HealthService {
 
 The module exports the following:
 
-- `DrizzleModule` - Main database module
-- `DrizzleClsModule` - CLS module for transactional support
+- `DrizzleModule` - Main database module with `getTransactionalPlugin()` static method
 - `DrizzleDatabase` - Type for the database instance
 - `DrizzleModuleOptions` - Configuration interface
+- `DrizzleTransactionalPluginOptions` - Options for transactional plugin
 - `InjectDrizzle` - Decorator for injecting database instance
 - `DRIZZLE_DB` - Token for database instance
 - `DRIZZLE_POOL` - Token for connection pool
@@ -635,7 +638,7 @@ The module exports the following:
 
 ## Best Practices
 
-1. **Always use DrizzleClsModule** - Enables request-scoped transactions and better context management
+1. **Set up CLS with transactional plugin** - Use `DrizzleModule.getTransactionalPlugin()` when configuring `ClsModule.forRoot()` to enable request-scoped transactions
 2. **Use @Transactional() decorator** - For operations that span multiple services
 3. **Configure connection pool** - Set appropriate min/max connections based on your workload
 4. **Enable query logging in development** - Helps with debugging and performance analysis
@@ -656,13 +659,17 @@ pool: {
 
 ### Transaction Not Working
 
-Ensure `DrizzleClsModule` is imported **after** `DrizzleModule`:
+Ensure CLS is set up with the Drizzle transactional plugin **before** importing `DrizzleModule`:
 
 ```typescript
 @Module({
   imports: [
+    // Set up CLS first with transactional plugin
+    ClsModule.forRoot({
+      plugins: [DrizzleModule.getTransactionalPlugin()],
+    }),
+    // Then import Drizzle module
     DrizzleModule.forRootAsync({ ... }),
-    DrizzleClsModule.forRoot(), // Must be after DrizzleModule
   ],
 })
 ```

@@ -28,12 +28,12 @@ export interface ClsModuleOptions extends Partial<NestClsModuleOptions> {
 
 @Global()
 @Module({})
-export class ClsModule {
+export class ClsModuleWrapper {
   static forRoot(options: ClsModuleOptions = {}): DynamicModule {
     const { enableMiddleware = true, setup, plugins = [], ...clsOptions } = options;
 
     return {
-      module: ClsModule,
+      module: ClsModuleWrapper,
       imports: [
         NestClsModule.forRoot({
           global: true,

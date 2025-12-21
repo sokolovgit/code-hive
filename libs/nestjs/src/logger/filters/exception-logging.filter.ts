@@ -1,3 +1,4 @@
+import { uuid } from '@code-hive/nestjs/utils';
 import {
   ExceptionFilter,
   Catch,
@@ -8,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { RpcException } from '@nestjs/microservices';
 import { Request, Response } from 'express';
+import { ClsService } from 'nestjs-cls';
 import { throwError } from 'rxjs';
 
 import { BaseError } from '../../errors';
@@ -16,7 +18,10 @@ import { LoggerService } from '../logger.service';
 
 @Catch()
 export class ExceptionLoggingFilter implements ExceptionFilter {
-  constructor(@Inject(LoggerService) private readonly logger: LoggerService) {}
+  constructor(
+    @Inject(LoggerService) private readonly logger: LoggerService,
+    @Inject(ClsService) private readonly cls: ClsService
+  ) {}
 
   catch(exception: unknown, host: ArgumentsHost) {
     // Determine context type
@@ -51,8 +56,12 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
           ? exception.getStatus()
           : HttpStatus.INTERNAL_SERVER_ERROR;
 
+    // Get requestId from CLS context (set by HttpLoggingInterceptor) or fallback to headers
     const requestId =
-      request.headers['x-request-id'] || request.headers['x-correlation-id'] || `req-${Date.now()}`;
+      this.cls.get('requestId') ||
+      request.headers['x-request-id'] ||
+      request.headers['x-correlation-id'] ||
+      uuid();
 
     // Build error response - use custom error's client-safe format if available
     let errorResponse: Record<string, unknown>;
@@ -118,19 +127,17 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
       timestamp: new Date().toISOString(),
     };
 
-    // Log at appropriate level - FIXED: Single log entry instead of double logging
+    // Log at appropriate level - single log entry with message and all details
     const shouldLog = !(exception instanceof BaseError) || exception.loggable;
     if (shouldLog) {
       const errorMessage = exception instanceof Error ? exception.message : 'HTTP exception';
 
-      // Single log entry with all details at appropriate level
+      // Single log entry with message and all details at appropriate level
       if (status >= 500) {
-        logger.error(errorMessage, undefined, 'GlobalExceptionFilter');
-        logger.info('Exception details', errorLog, 'GlobalExceptionFilter');
+        logger.error(errorMessage, errorLog, 'GlobalExceptionFilter');
       } else if (status >= 400) {
         // 4xx errors are client errors, log as warn
-        logger.warn(errorMessage, 'GlobalExceptionFilter');
-        logger.info('Exception details', errorLog, 'GlobalExceptionFilter');
+        logger.warn(errorMessage, errorLog, 'GlobalExceptionFilter');
       } else {
         logger.info(errorMessage, errorLog, 'GlobalExceptionFilter');
       }
@@ -183,11 +190,11 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
       timestamp: new Date().toISOString(),
     };
 
-    // Log if error is loggable
+    // Log if error is loggable - single log entry with message and details
     const shouldLog = !(exception instanceof BaseError) || exception.loggable;
     if (shouldLog) {
-      logger.error('RPC exception', undefined, 'RpcException');
-      logger.info('RPC exception details', errorLog, 'RpcException');
+      const errorMessage = exception instanceof Error ? exception.message : 'RPC exception';
+      logger.error(errorMessage, errorLog, 'RpcException');
     }
 
     // Return appropriate error format
@@ -245,11 +252,11 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
       timestamp: new Date().toISOString(),
     };
 
-    // Log if error is loggable
+    // Log if error is loggable - single log entry with message and details
     const shouldLog = !(exception instanceof BaseError) || exception.loggable;
     if (shouldLog) {
-      logger.error('WebSocket exception', undefined, 'WebSocketException');
-      logger.info('WebSocket exception details', errorLog, 'WebSocketException');
+      const errorMessage = exception instanceof Error ? exception.message : 'WebSocket exception';
+      logger.error(errorMessage, errorLog, 'WebSocketException');
     }
   }
 

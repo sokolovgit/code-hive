@@ -477,14 +477,18 @@ The logger context supports the following fields:
 When using the Drizzle module with transactional support, the logger context is automatically integrated:
 
 ```typescript
-import { DrizzleModule, DrizzleClsModule } from '@code-hive/nestjs/database/drizzle';
+import { ClsModule } from '@code-hive/nestjs/cls';
+import { DrizzleModule } from '@code-hive/nestjs/database/drizzle';
 import { LoggerModule } from '@code-hive/nestjs/logger';
 
 @Module({
   imports: [
+    // Set up CLS with Drizzle transactional plugin
+    ClsModule.forRoot({
+      plugins: [DrizzleModule.getTransactionalPlugin()],
+    }),
     LoggerModule.forRootAsync({ ... }),
     DrizzleModule.forRootAsync({ ... }),
-    DrizzleClsModule.forRoot(), // Shares CLS context with logger
   ],
 })
 export class AppModule {}

@@ -8,6 +8,8 @@ import {
   Inject,
   Optional,
 } from '@nestjs/common';
+import { ClsPluginTransactional } from '@nestjs-cls/transactional';
+import { TransactionalAdapterDrizzleOrm } from '@nestjs-cls/transactional-adapter-drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool, PoolConfig } from 'pg';
 
@@ -17,6 +19,7 @@ import { DRIZZLE_DB, DRIZZLE_OPTIONS, DRIZZLE_POOL } from './drizzle.constants';
 import { DrizzleDatabase, DrizzleModuleOptions } from './drizzle.types';
 
 import type { ModuleMetadata } from '@nestjs/common/interfaces';
+import type { ClsPlugin } from 'nestjs-cls';
 
 export interface DrizzleModuleAsyncOptions<TFactoryArgs extends unknown[] = unknown[]> extends Pick<
   ModuleMetadata,
@@ -24,6 +27,14 @@ export interface DrizzleModuleAsyncOptions<TFactoryArgs extends unknown[] = unkn
 > {
   inject?: { [K in keyof TFactoryArgs]: Type<TFactoryArgs[K]> | string | symbol };
   useFactory: (...args: TFactoryArgs) => DrizzleModuleOptions | Promise<DrizzleModuleOptions>;
+}
+
+export interface DrizzleTransactionalPluginOptions {
+  /**
+   * Token used for Drizzle instance (must match DrizzleModule export)
+   * @default DRIZZLE_DB
+   */
+  drizzleToken?: string | symbol;
 }
 
 @Global()
@@ -150,7 +161,7 @@ export class DrizzleModule implements OnModuleDestroy {
               query,
               params,
             },
-            'Database query executed'
+            'Database query'
           );
         },
       };
@@ -169,5 +180,38 @@ export class DrizzleModule implements OnModuleDestroy {
       await this.pool.end();
       this.logger?.info('Database connection pool closed');
     }
+  }
+
+  /**
+   * Get the transactional plugin for Drizzle ORM
+   * This should be passed to ClsModule.forRoot() plugins array to enable
+   * request-scoped transactions using @Transactional() decorator.
+   *
+   * Usage:
+   * ```typescript
+   * @Module({
+   *   imports: [
+   *     // Set up CLS with Drizzle transactional plugin
+   *     ClsModule.forRoot({
+   *       plugins: [DrizzleModule.getTransactionalPlugin()],
+   *     }),
+   *     // Then import Drizzle module
+   *     DrizzleModule.forRootAsync({ ... }),
+   *   ],
+   * })
+   * ```
+   *
+   * @param options Configuration options for the transactional plugin
+   * @returns ClsPluginTransactional instance configured for Drizzle
+   */
+  static getTransactionalPlugin(options: DrizzleTransactionalPluginOptions = {}): ClsPlugin {
+    const { drizzleToken = DRIZZLE_DB } = options;
+
+    return new ClsPluginTransactional({
+      imports: [], // DrizzleModule should be imported separately
+      adapter: new TransactionalAdapterDrizzleOrm({
+        drizzleInstanceToken: drizzleToken,
+      }),
+    });
   }
 }

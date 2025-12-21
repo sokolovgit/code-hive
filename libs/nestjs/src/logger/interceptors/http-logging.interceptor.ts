@@ -6,12 +6,7 @@ import { Observable } from 'rxjs';
 import { tap, catchError } from 'rxjs/operators';
 
 import { uuid } from '../../utils';
-import {
-  loggerContext,
-  extractTraceContext,
-  getStatusCategory,
-  getTimeBucket,
-} from '../logger.context';
+import { extractTraceContext, getStatusCategory, getTimeBucket } from '../logger.context';
 import { LoggerService } from '../logger.service';
 
 export interface HttpLoggingInterceptorOptions {
@@ -122,13 +117,16 @@ export class HttpLoggingInterceptor implements NestInterceptor {
     };
 
     // Set context in CLS
+    // Note: CLS middleware already creates a context for HTTP requests,
+    // so we just set values directly without using loggerContext.run()
     Object.entries(loggerCtx).forEach(([key, value]) => {
       if (value !== undefined) {
         this.cls.set(key, value);
       }
     });
 
-    return loggerContext.run(loggerCtx, () => {
+    // Execute the request handler - CLS context is already active from middleware
+    return (() => {
       // Request log
       const requestLog: Record<string, unknown> = {
         method: request.method,
@@ -214,52 +212,13 @@ export class HttpLoggingInterceptor implements NestInterceptor {
           this.logger.info(logMessage, responseLog, 'HTTP');
         }),
         catchError((error: unknown) => {
-          const duration = Date.now() - startTime;
-          const statusCode = response.statusCode || 500;
-          const statusCategory = getStatusCategory(statusCode);
-          const responseTimeBucket = getTimeBucket(duration);
-
-          const errorInfo: Record<string, unknown> = {
-            name: error instanceof Error ? error.name : 'UnknownError',
-            message: error instanceof Error ? error.message : 'Unknown error',
-          };
-          if (error instanceof Error && error.stack) {
-            // Format stack as array
-            errorInfo.stack = error.stack
-              .split('\n')
-              .map((line) => line.trim())
-              .filter(Boolean);
-          }
-
-          const errorLog: Record<string, unknown> = {
-            method: request.method,
-            url: request.url,
-            path: request.path,
-            statusCode,
-            statusCategory,
-            success: false,
-            responseTime: `${duration}ms`,
-            responseTimeMs: duration,
-            responseTimeBucket,
-            startTime,
-            endTime: Date.now(),
-            ip: request.ip || request.socket.remoteAddress,
-            userAgent: request.headers['user-agent'],
-            error: errorInfo,
-            ...(logHeaders && {
-              requestHeaders: this.sanitizeObject(request.headers),
-              responseHeaders: response.getHeaders(),
-            }),
-          };
-
-          const logMessage = `<- ${request.method} ${request.path || request.url} ${statusCode} - ${duration}ms`;
-          this.logger.error(logMessage, undefined, 'HTTP');
-          this.logger.info('HTTP error details', errorLog, 'HTTP');
-
+          // Don't log errors here - let the ExceptionLoggingFilter handle all error logging
+          // This prevents duplicate logs and ensures consistent error handling
+          // Just rethrow the error so the exception filter can catch it
           throw error;
         })
       );
-    });
+    })();
   }
 
   private sanitizeObject(obj: Record<string, unknown>): Record<string, unknown> {

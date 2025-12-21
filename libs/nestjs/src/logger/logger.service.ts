@@ -276,10 +276,41 @@ export class LoggerService implements NestLoggerService {
   /**
    * Log an error message
    */
-  error(message: unknown, trace?: string, context?: string): void {
+  error(message: unknown, metaOrTrace?: string | Record<string, unknown>, context?: string): void {
     const autoContext = this.getAutoContext();
     const logContext = context || this.context || (autoContext.service as string);
     const errorContext = this.cleanLogData(autoContext);
+
+    // Handle metadata or trace parameter
+    let trace: string | undefined;
+    let meta: Record<string, unknown> | undefined;
+
+    if (metaOrTrace) {
+      if (typeof metaOrTrace === 'string') {
+        // Legacy: second parameter is trace string
+        trace = metaOrTrace;
+      } else if (typeof metaOrTrace === 'object') {
+        // New: second parameter is metadata object
+        meta = metaOrTrace;
+      }
+    }
+
+    // Merge metadata if provided
+    if (meta && typeof meta === 'object') {
+      Object.keys(meta).forEach((key) => {
+        const value = meta[key];
+        if (
+          value !== 'Array' &&
+          value !== 'forEach' &&
+          value !== 'Object' &&
+          value !== 'OperatorSubscriber' &&
+          value !== 'Subscriber' &&
+          key !== 'context'
+        ) {
+          errorContext[key] = value;
+        }
+      });
+    }
 
     if (trace) {
       // Format trace as array if it's a string
@@ -327,12 +358,46 @@ export class LoggerService implements NestLoggerService {
   }
 
   /**
-   * Log a warning message
+   * Log a warning message with optional metadata
    */
-  warn(message: unknown, context?: string): void {
+  warn(message: unknown, metaOrContext?: Record<string, unknown> | string, context?: string): void {
     const autoContext = this.getAutoContext();
-    const logContext = context || this.context || (autoContext.service as string);
+    let logContext: string | undefined;
+    let meta: Record<string, unknown> | undefined;
+
+    // Handle overloaded parameters
+    if (metaOrContext) {
+      if (typeof metaOrContext === 'string') {
+        // Legacy: second parameter is context string
+        logContext = metaOrContext;
+      } else if (typeof metaOrContext === 'object') {
+        // New: second parameter is metadata object
+        meta = metaOrContext;
+        logContext = context;
+      }
+    } else {
+      logContext = context;
+    }
+
+    logContext = logContext || this.context || (autoContext.service as string);
     const logData = this.cleanLogData(autoContext);
+
+    // Merge metadata if provided
+    if (meta && typeof meta === 'object') {
+      Object.keys(meta).forEach((key) => {
+        const value = meta[key];
+        if (
+          value !== 'Array' &&
+          value !== 'forEach' &&
+          value !== 'Object' &&
+          value !== 'OperatorSubscriber' &&
+          value !== 'Subscriber' &&
+          key !== 'context'
+        ) {
+          logData[key] = value;
+        }
+      });
+    }
 
     this.logger.warn(logData, this.formatMessage(message, { ...logData, context: logContext }));
   }
