@@ -33,8 +33,8 @@ export function createMetricsProvider(options: MetricsProviderOptions): MeterPro
     resource,
     enabled = true,
     exporter,
-    exportIntervalMillis = 10000,
-    exportTimeoutMillis = 30000,
+    exportIntervalMillis = 60000, // 60 seconds - must be >= exportTimeoutMillis
+    exportTimeoutMillis = 30000, // 30 seconds
     attributes: _attributes = {}, // eslint-disable-line @typescript-eslint/no-unused-vars
   } = options;
 

@@ -58,15 +58,15 @@ import * as schema from './users/users.schema';
   providers: [
     {
       provide: APP_INTERCEPTOR,
-      useClass: TraceInterceptor,
+      useExisting: TraceInterceptor,
     },
     {
       provide: APP_INTERCEPTOR,
-      useClass: HttpSpanInterceptor,
+      useExisting: HttpSpanInterceptor,
     },
     {
       provide: APP_INTERCEPTOR,
-      useClass: MetricsInterceptor,
+      useExisting: MetricsInterceptor,
     },
     {
       provide: APP_INTERCEPTOR,

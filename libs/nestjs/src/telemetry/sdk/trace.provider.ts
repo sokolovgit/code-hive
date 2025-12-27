@@ -67,17 +67,12 @@ export function createTraceProvider(options: TraceProviderOptions): NodeTracerPr
     });
   }
 
-  // Create tracer provider
+  // Create tracer provider with span processor (v2 API)
   const tracerProvider = new NodeTracerProvider({
     resource,
     sampler: traceSampler,
+    spanProcessors: [spanProcessor],
   });
-
-  // Add span processor
-  // Note: NodeTracerProvider may use a different method name
-  (
-    tracerProvider as unknown as { addSpanProcessor: (processor: SpanProcessor) => void }
-  ).addSpanProcessor(spanProcessor);
 
   // Register global tracer provider
   tracerProvider.register();

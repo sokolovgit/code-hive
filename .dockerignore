@@ -81,11 +81,14 @@ docker-compose*.yml
 **/docker-compose*.yml
 
 # Documentation (not needed in Docker)
+# Exclude root-level docs/ but keep source code directories named docs/
 *.md
 **/*.md
 !README.md
-docs/
-**/docs/
+/docs/
+!/**/src/**/docs/
+!/**/libs/**/docs/
+!/**/apps/**/docs/
 
 # Temporary files
 *.tmp

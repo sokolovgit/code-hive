@@ -81,18 +81,11 @@ export function createLogsProvider(options: LogsProviderOptions): LoggerProvider
     });
   }
 
-  // Create logger provider
+  // Create logger provider with processors (v2 API)
   const loggerProvider = new LoggerProvider({
     resource,
+    processors: [logRecordProcessor],
   });
-
-  // Add log record processor
-  // Note: LoggerProvider API may vary by version
-  (
-    loggerProvider as unknown as {
-      addLogRecordProcessor: (processor: typeof logRecordProcessor) => void;
-    }
-  ).addLogRecordProcessor(logRecordProcessor);
 
   return loggerProvider;
 }
