@@ -1,18 +1,23 @@
 import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common';
-import { context as otelContext, trace, SpanKind, SpanStatusCode } from '@opentelemetry/api';
+import { Reflector } from '@nestjs/core';
+import { SpanKind, SpanStatusCode } from '@opentelemetry/api';
 import { Observable } from 'rxjs';
 import { tap, catchError } from 'rxjs/operators';
 
+import { SPAN_METADATA_KEY, SpanOptions } from '../decorators/span.decorator';
+import { TRACE_METADATA_KEY, TraceOptions } from '../decorators/trace.decorator';
 import { TelemetryService } from '../telemetry.service';
 
 /**
  * Automatic Trace Interceptor
- * Automatically traces ALL service methods - no decorators needed!
- * Intelligently extracts method name, class name, and arguments.
+ * Automatically traces service methods based on @Trace() or @Span() decorators
  */
 @Injectable()
 export class TraceInterceptor implements NestInterceptor {
-  constructor(private readonly telemetry: TelemetryService) {}
+  constructor(
+    private readonly telemetry: TelemetryService,
+    private readonly reflector: Reflector
+  ) {}
 
   intercept(executionContext: ExecutionContext, next: CallHandler): Observable<unknown> {
     // Skip if it's a controller (HTTP interceptor already handles it)
@@ -30,6 +35,17 @@ export class TraceInterceptor implements NestInterceptor {
       return next.handle();
     }
 
+    // Check for @Trace() or @Span() decorator
+    const traceOptions = this.reflector.get<TraceOptions | undefined>(TRACE_METADATA_KEY, handler);
+    const spanOptions = this.reflector.get<SpanOptions | undefined>(SPAN_METADATA_KEY, handler);
+
+    const options = traceOptions || spanOptions;
+
+    // If no decorator, skip
+    if (!options) {
+      return next.handle();
+    }
+
     const methodName = handler.name;
 
     // Skip NestJS lifecycle methods and internal methods
@@ -44,84 +60,102 @@ export class TraceInterceptor implements NestInterceptor {
       return next.handle();
     }
 
-    // Generate span name: ClassName.methodName
-    const spanName = `${className}.${methodName}`;
+    // Generate span name
+    const spanName = options.name || `${className}.${methodName}`;
 
-    // Automatically extract useful attributes from method arguments
+    // Extract attributes from method arguments if requested
     const args = executionContext.getArgs();
     const attributes: Record<string, string | number | boolean> = {
       'code.function': methodName,
       'code.namespace': className,
+      ...(options.attributes || {}),
     };
 
-    // Intelligently extract attributes from arguments
-    args.forEach((arg, index) => {
-      if (arg === null || arg === undefined) {
-        return;
-      }
+    // Include arguments if requested
+    if (options.includeArgs) {
+      args.forEach((arg, index) => {
+        if (arg === null || arg === undefined) {
+          return;
+        }
 
-      // Handle string/number/boolean primitives
-      if (typeof arg === 'string' || typeof arg === 'number' || typeof arg === 'boolean') {
-        // Use meaningful attribute names for common patterns
-        if (typeof arg === 'string' && arg.length < 100) {
-          // Common ID patterns
-          if (arg.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
-            attributes[`arg${index}.id`] = arg;
-          } else if (arg.includes('@')) {
-            attributes[`arg${index}.email`] = arg;
+        if (typeof arg === 'string' || typeof arg === 'number' || typeof arg === 'boolean') {
+          if (typeof arg === 'string' && arg.length < 100) {
+            if (arg.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+              attributes[`arg${index}.id`] = arg;
+            } else if (arg.includes('@')) {
+              attributes[`arg${index}.email`] = arg;
+            } else {
+              attributes[`arg${index}`] = arg;
+            }
           } else {
             attributes[`arg${index}`] = arg;
           }
-        } else {
-          attributes[`arg${index}`] = arg;
-        }
-      }
-      // Handle objects - extract common fields
-      else if (typeof arg === 'object' && !Array.isArray(arg) && !(arg instanceof Date)) {
-        Object.entries(arg).forEach(([key, value]) => {
-          // Only include safe, small values
-          if (typeof value === 'string' && value.length < 100) {
-            attributes[`arg${index}.${key}`] = value;
-          } else if (typeof value === 'number' || typeof value === 'boolean') {
-            attributes[`arg${index}.${key}`] = value;
-          }
-        });
-      }
-    });
-
-    // Create span automatically
-    const span = this.telemetry.getTracer().startSpan(spanName, {
-      kind: SpanKind.INTERNAL,
-      attributes,
-    });
-
-    // Set span as active in context
-    const activeContext = trace.setSpan(otelContext.active(), span);
-
-    return otelContext.with(activeContext, () => {
-      return next.handle().pipe(
-        tap((result) => {
-          // Automatically add result metadata
-          if (result !== undefined) {
-            const resultType = Array.isArray(result) ? 'array' : typeof result;
-            span.setAttribute('result.type', resultType);
-            if (Array.isArray(result)) {
-              span.setAttribute('result.length', result.length);
+        } else if (typeof arg === 'object' && !Array.isArray(arg) && !(arg instanceof Date)) {
+          Object.entries(arg).forEach(([key, value]) => {
+            if (typeof value === 'string' && value.length < 100) {
+              attributes[`arg${index}.${key}`] = value;
+            } else if (typeof value === 'number' || typeof value === 'boolean') {
+              attributes[`arg${index}.${key}`] = value;
             }
-          }
-          span.setStatus({ code: SpanStatusCode.OK });
-          span.end();
-        }),
-        catchError((error) => {
-          span.recordException(error);
-          span.setStatus({
-            code: SpanStatusCode.ERROR,
-            message: error instanceof Error ? error.message : String(error),
           });
-          span.end();
-          throw error;
-        })
-      );
+        }
+      });
+    }
+
+    // Create span
+    return new Observable((subscriber) => {
+      this.telemetry
+        .startSpan(
+          spanName,
+          {
+            kind: options.kind || SpanKind.INTERNAL,
+            attributes,
+          },
+          async (span) => {
+            const result = await new Promise((resolve, reject) => {
+              next
+                .handle()
+                .pipe(
+                  tap((data) => {
+                    if (options.includeResult && data !== undefined) {
+                      const resultType = Array.isArray(data) ? 'array' : typeof data;
+                      span.setAttribute('result.type', resultType);
+                      if (Array.isArray(data)) {
+                        span.setAttribute('result.length', data.length);
+                      }
+                      span.addEvent('result', { type: resultType });
+                    }
+                    resolve(data);
+                  }),
+                  catchError((error) => {
+                    span.recordException(error);
+                    span.setStatus({
+                      code: SpanStatusCode.ERROR,
+                      message: error instanceof Error ? error.message : String(error),
+                    });
+                    reject(error);
+                    throw error;
+                  })
+                )
+                .subscribe({
+                  next: (value) => {
+                    subscriber.next(value);
+                  },
+                  error: (error) => {
+                    subscriber.error(error);
+                  },
+                  complete: () => {
+                    span.setStatus({ code: SpanStatusCode.OK });
+                    subscriber.complete();
+                  },
+                });
+            });
+            return result;
+          }
+        )
+        .catch((error) => {
+          subscriber.error(error);
+        });
     });
   }
 }

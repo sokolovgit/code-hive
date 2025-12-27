@@ -1,24 +1,44 @@
 # OpenTelemetry Telemetry Module
 
-This module provides comprehensive OpenTelemetry instrumentation for NestJS applications, enabling distributed tracing, metrics collection, and log correlation.
+A comprehensive OpenTelemetry module for NestJS applications, providing distributed tracing, metrics collection, and structured logging with trace correlation.
 
 ## Features
 
-- ✅ **Automatic Instrumentation**: HTTP, PostgreSQL, Redis, and more
-- ✅ **Manual Span Creation**: Easy-to-use API for custom spans
-- ✅ **Trace-Log Correlation**: Automatic trace ID injection into logs
-- ✅ **Metrics Collection**: Prometheus and OTLP exporters
-- ✅ **Configurable Sampling**: Head-based sampling with configurable rates
-- ✅ **Context Propagation**: W3C Trace Context support
+- ✅ **Three Pillars of Observability**: Traces, Metrics, and Logs
+- ✅ **Automatic Instrumentation**: HTTP, NestJS, PostgreSQL, Redis, gRPC, and more
+- ✅ **Manual Instrumentation**: Decorators (`@Span`, `@Trace`) and service methods
+- ✅ **Resource Detection**: Automatic service, host, and cloud metadata detection
+- ✅ **Context Propagation**: W3C Trace Context and Baggage support
+- ✅ **Sampling Strategies**: Head-based and parent-based sampling
+- ✅ **Multiple Exporters**: OTLP (gRPC/HTTP), Prometheus, Console
+- ✅ **Security**: Sensitive data filtering and redaction
 - ✅ **CLS Integration**: Seamless integration with nestjs-cls
+- ✅ **Performance Optimized**: Batch processors and configurable sampling
 
 ## Installation
 
-The module is already included in `@code-hive/nestjs`. No additional installation needed.
+The module is included in `@code-hive/nestjs`. No additional installation needed.
 
 ## Quick Start
 
-### 1. Import the Module
+### 1. Early Initialization (Recommended)
+
+Initialize OpenTelemetry in `main.ts` **before** any other imports to ensure auto-instrumentations patch modules before they load:
+
+```typescript
+import { loadEnv } from '@code-hive/nestjs/config';
+loadEnv();
+
+// Initialize OpenTelemetry early
+import { initOpenTelemetry } from '@code-hive/nestjs/telemetry';
+initOpenTelemetry();
+
+// ... rest of imports
+import { NestFactory } from '@nestjs/core';
+// ...
+```
+
+### 2. Import the Module
 
 ```typescript
 import { TelemetryModule } from '@code-hive/nestjs/telemetry';
@@ -36,6 +56,7 @@ import { Module } from '@nestjs/common';
         environment: config.get('NODE_ENV'),
         tracing: {
           enabled: true,
+          sampler: config.get('NODE_ENV') === 'production' ? 0.1 : 'always',
           exporter: {
             type: 'otlp',
             protocol: 'grpc',
@@ -49,6 +70,14 @@ import { Module } from '@nestjs/common';
             port: 9464,
           },
         },
+        logs: {
+          enabled: true,
+          exporter: {
+            type: 'otlp',
+            protocol: 'grpc',
+            endpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317',
+          },
+        },
       }),
     }),
   ],
@@ -56,113 +85,335 @@ import { Module } from '@nestjs/common';
 export class AppModule {}
 ```
 
-### 2. Use Manual Instrumentation
+### 3. Use Manual Instrumentation
 
 ```typescript
 import { Injectable } from '@nestjs/common';
 import { TelemetryService } from '@code-hive/nestjs/telemetry';
+import { Span } from '@code-hive/nestjs/telemetry';
 
 @Injectable()
 export class UsersService {
   constructor(private readonly telemetry: TelemetryService) {}
 
-  async findUser(id: string) {
+  // Using decorator
+  @Span({ name: 'users.find', attributes: { 'db.table': 'users' } })
+  async findOne(id: string) {
+    return this.db.select().from(users).where(eq(users.id, id));
+  }
+
+  // Using service method
+  async createUser(data: CreateUserDto) {
     return this.telemetry.startSpan(
-      'users.find',
+      'users.create',
       {
-        attributes: {
-          'user.id': id,
-          'operation.type': 'read',
-        },
+        attributes: { 'user.email': data.email },
       },
       async (span) => {
-        // Your business logic here
-        const user = await this.repository.findOne(id);
-
-        // Add events to the span
-        this.telemetry.addEvent('user.found', {
-          'user.id': id,
-          'user.exists': !!user,
-        });
-
-        return user;
+        const user = await this.db.insert(users).values(data).returning();
+        span.setAttribute('user.id', user[0].id);
+        return user[0];
       }
     );
   }
 }
 ```
 
-### 3. Access Trace Context
+## Configuration
+
+### Basic Configuration
 
 ```typescript
-import { Injectable } from '@nestjs/common';
-import { TelemetryService } from '@code-hive/nestjs/telemetry';
+TelemetryModule.forRoot({
+  serviceName: 'my-service',
+  serviceVersion: '1.0.0',
+  environment: 'production',
+  tracing: {
+    enabled: true,
+    sampler: 0.1, // 10% sampling in production
+    exporter: {
+      type: 'otlp',
+      protocol: 'grpc',
+      endpoint: 'http://otel-collector:4317',
+    },
+  },
+  metrics: {
+    enabled: true,
+    exporter: {
+      type: 'prometheus',
+      port: 9464,
+    },
+  },
+});
+```
 
-@Injectable()
-export class SomeService {
-  constructor(private readonly telemetry: TelemetryService) {}
+### Advanced Configuration
 
-  async doSomething() {
-    // Get current trace ID
-    const traceId = this.telemetry.getTraceId();
-    console.log('Current trace ID:', traceId);
+```typescript
+TelemetryModule.forRoot({
+  serviceName: 'my-service',
+  serviceVersion: '1.0.0',
+  environment: 'production',
 
-    // Get current span ID
-    const spanId = this.telemetry.getSpanId();
-    console.log('Current span ID:', spanId);
+  // Tracing configuration
+  tracing: {
+    enabled: true,
+    sampler: 'parent-ratio', // Parent-based sampling
+    exporter: {
+      type: 'otlp',
+      protocol: 'http',
+      endpoint: 'https://otel-collector.example.com',
+      headers: {
+        Authorization: 'Bearer token',
+      },
+    },
+    processor: {
+      type: 'batch',
+      maxQueueSize: 4096,
+      maxExportBatchSize: 512,
+      scheduledDelayMillis: 5000,
+    },
+  },
 
-    // Add attributes to current span
-    this.telemetry.setAttributes({
-      'custom.attribute': 'value',
-    });
-  }
+  // Metrics configuration
+  metrics: {
+    enabled: true,
+    exporter: {
+      type: 'otlp',
+      protocol: 'grpc',
+      endpoint: 'http://otel-collector:4317',
+    },
+    exportIntervalMillis: 10000,
+  },
+
+  // Logs configuration
+  logs: {
+    enabled: true,
+    exporter: {
+      type: 'otlp',
+      protocol: 'grpc',
+      endpoint: 'http://otel-collector:4317',
+    },
+  },
+
+  // Instrumentation configuration
+  instrumentation: {
+    enabled: true,
+    nestjs: true,
+    http: {
+      enabled: true,
+      captureHeaders: true,
+      captureBodies: false, // Disable body capture for performance
+      maxBodySize: 10000,
+      ignorePaths: ['/health', '/metrics'],
+    },
+    pg: {
+      enabled: true,
+      captureQueryText: true,
+      captureParameters: true,
+      captureRowCount: true,
+    },
+    redis: true,
+    grpc: true,
+  },
+
+  // Resource attributes
+  resourceAttributes: {
+    team: 'backend',
+    component: 'api',
+  },
+});
+```
+
+## Decorators
+
+### @Span() Decorator
+
+Automatically creates a span for a method:
+
+```typescript
+import { Span } from '@code-hive/nestjs/telemetry';
+
+@Span({
+  name: 'users.find',
+  attributes: { 'db.table': 'users' },
+  includeArgs: true,
+  includeResult: true,
+})
+async findOne(id: string) {
+  // Method implementation
 }
 ```
 
-## Configuration Options
+### @Trace() Decorator
 
-### TelemetryModuleOptions
+Alias for `@Span()` for backward compatibility:
 
 ```typescript
-interface TelemetryModuleOptions {
-  // Enable/disable telemetry
-  enabled?: boolean;
+import { Trace } from '@code-hive/nestjs/telemetry';
 
-  // Service identification
-  serviceName?: string;
-  serviceVersion?: string;
-  environment?: string;
+@Trace({ name: 'users.create' })
+async createUser(data: CreateUserDto) {
+  // Method implementation
+}
+```
 
-  // Tracing configuration
-  tracing?: {
-    enabled?: boolean;
-    sampler?: 'always' | 'never' | number | Sampler;
-    exporter?: {
-      type?: 'otlp' | 'console';
-      protocol?: 'grpc' | 'http';
-      endpoint?: string;
-      headers?: Record<string, string>;
-    };
-  };
+## TelemetryService API
 
-  // Metrics configuration
-  metrics?: {
-    enabled?: boolean;
-    exporter?: {
-      type?: 'otlp' | 'prometheus' | 'console';
-      endpoint?: string;
-      port?: number;
-      headers?: Record<string, string>;
-    };
-  };
+### Tracing
 
-  // Auto-instrumentation
-  instrumentation?: {
-    enabled?: boolean;
-    http?: boolean;
-    pg?: boolean;
-    redis?: boolean;
-  };
+```typescript
+// Start a span
+await this.telemetry.startSpan(
+  'operation.name',
+  {
+    attributes: { key: 'value' },
+  },
+  async (span) => {
+    // Your code here
+    span.setAttribute('result', 'success');
+    return result;
+  }
+);
+
+// Get active span
+const span = this.telemetry.getActiveSpan();
+
+// Get trace ID
+const traceId = this.telemetry.getTraceId();
+
+// Add event
+this.telemetry.addEvent('important.milestone', { key: 'value' });
+
+// Set attributes
+this.telemetry.setAttributes({ key: 'value' });
+```
+
+### Metrics
+
+```typescript
+// Create a counter
+const counter = this.telemetry.createCounter('requests_total', {
+  description: 'Total number of requests',
+});
+counter.add(1, { method: 'GET', status: '200' });
+
+// Create a histogram
+const histogram = this.telemetry.createHistogram('request_duration_ms', {
+  description: 'Request duration in milliseconds',
+  unit: 'ms',
+});
+histogram.record(150, { method: 'GET' });
+
+// Create an observable gauge
+const gauge = this.telemetry.createObservableGauge(
+  'memory_usage',
+  {
+    description: 'Memory usage in bytes',
+  },
+  (observable) => {
+    observable.observe(process.memoryUsage().heapUsed, {});
+  }
+);
+```
+
+### Logs
+
+```typescript
+// Emit logs with trace correlation
+this.telemetry.info('User created', { userId: '123' });
+this.telemetry.warn('Rate limit approaching', { remaining: 10 });
+this.telemetry.error('Failed to process', error, { context: 'payment' });
+```
+
+## Interceptors
+
+The module provides several interceptors:
+
+- **TraceInterceptor**: Automatically traces methods decorated with `@Span()` or `@Trace()`
+- **HttpSpanInterceptor**: Enriches HTTP spans with response headers and bodies
+- **MetricsInterceptor**: Collects HTTP metrics (latency, status codes, etc.)
+
+```typescript
+import {
+  TraceInterceptor,
+  HttpSpanInterceptor,
+  MetricsInterceptor,
+} from '@code-hive/nestjs/telemetry';
+
+@Module({
+  providers: [
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: TraceInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: HttpSpanInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: MetricsInterceptor,
+    },
+  ],
+})
+export class AppModule {}
+```
+
+## Best Practices
+
+### 1. Early Initialization
+
+Always initialize OpenTelemetry in `main.ts` before other imports:
+
+```typescript
+// ✅ Good
+import { initOpenTelemetry } from '@code-hive/nestjs/telemetry';
+initOpenTelemetry();
+import { NestFactory } from '@nestjs/core';
+
+// ❌ Bad
+import { NestFactory } from '@nestjs/core';
+import { initOpenTelemetry } from '@code-hive/nestjs/telemetry';
+initOpenTelemetry();
+```
+
+### 2. Sampling Strategy
+
+- **Development**: Use `'always'` to sample all traces
+- **Production**: Use `0.1` (10%) or `'parent-ratio'` for cost efficiency
+- **High-traffic services**: Use lower sampling rates (0.01 - 0.05)
+
+### 3. Sensitive Data
+
+Never capture sensitive data in spans:
+
+```typescript
+// ❌ Bad
+span.setAttribute('password', user.password);
+span.setAttribute('credit_card', payment.cardNumber);
+
+// ✅ Good
+span.setAttribute('user.id', user.id);
+span.setAttribute('payment.amount', payment.amount);
+```
+
+### 4. Performance
+
+- Use batch processors in production
+- Disable body capture for high-traffic endpoints
+- Use appropriate sampling rates
+- Monitor telemetry overhead
+
+### 5. Resource Attributes
+
+Add meaningful resource attributes:
+
+```typescript
+resourceAttributes: {
+  'team': 'backend',
+  'component': 'api',
+  'datacenter': 'us-east-1',
 }
 ```
 
@@ -170,97 +421,58 @@ interface TelemetryModuleOptions {
 
 The module respects standard OpenTelemetry environment variables:
 
-- `OTEL_EXPORTER_OTLP_ENDPOINT`: OTLP endpoint URL (default: `http://localhost:4317`)
-- `OTEL_SERVICE_NAME`: Service name (overrides `serviceName` option)
+- `OTEL_EXPORTER_OTLP_ENDPOINT`: OTLP endpoint URL
+- `OTEL_SERVICE_NAME`: Service name
+- `OTEL_SERVICE_VERSION`: Service version
 - `OTEL_RESOURCE_ATTRIBUTES`: Additional resource attributes
-
-## Integration with Logger
-
-The telemetry module automatically injects trace IDs into your logs via the existing logger context. No additional configuration needed!
-
-```typescript
-// In your service
-this.logger.info('Processing request', { userId: '123' });
-// Logs will automatically include traceId and spanId from the active span
-```
-
-## Observability Stack
-
-The module is designed to work with the Grafana observability stack:
-
-- **Tempo**: Distributed tracing backend
-- **Prometheus**: Metrics collection
-- **Loki**: Log aggregation (optional)
-- **Grafana**: Visualization
-
-See `infra/docker-compose.yml` for the complete setup.
-
-## Best Practices
-
-1. **Use Semantic Conventions**: Follow OpenTelemetry semantic conventions for attribute names
-2. **Keep Spans Focused**: Create spans for meaningful operations, not every function call
-3. **Set Appropriate Sampling**: Use lower sampling rates in production (10-20%)
-4. **Correlate Logs**: Always include trace IDs in logs for correlation
-5. **Monitor Performance**: Use metrics to track span creation overhead
-
-## Examples
-
-### Database Query Span
-
-```typescript
-async findUser(id: string) {
-  return this.telemetry.startSpan('db.query', {
-    attributes: {
-      'db.system': 'postgresql',
-      'db.operation': 'select',
-      'db.table': 'users',
-    },
-  }, async () => {
-    return this.db.query('SELECT * FROM users WHERE id = $1', [id]);
-  });
-}
-```
-
-### External API Call Span
-
-```typescript
-async callExternalAPI(url: string) {
-  return this.telemetry.startSpan('http.request', {
-    kind: SpanKind.CLIENT,
-    attributes: {
-      'http.method': 'GET',
-      'http.url': url,
-    },
-  }, async (span) => {
-    const response = await fetch(url);
-    span.setAttribute('http.status_code', response.status);
-    return response.json();
-  });
-}
-```
 
 ## Troubleshooting
 
-### Traces not appearing in Tempo
+### Spans not appearing
 
-1. Check that the OTEL Collector is running: `docker ps | grep otel-collector`
-2. Verify the endpoint URL matches your collector configuration
-3. Check collector logs: `docker logs code-hive-otel-collector`
+1. Check that OpenTelemetry is initialized early in `main.ts`
+2. Verify exporter endpoint is reachable
+3. Check sampling configuration
+4. Ensure instrumentation is enabled
 
 ### High memory usage
 
-1. Reduce sampling rate in production
-2. Adjust batch processor settings in collector config
-3. Use tail-based sampling for better resource utilization
+1. Reduce sampling rate
+2. Disable body capture
+3. Increase batch processor queue size
+4. Use simple processor for debugging only
 
-### Missing spans
+### Missing traces
 
-1. Ensure auto-instrumentation is enabled
-2. Check that the instrumentation packages are installed
-3. Verify spans are being created (use console exporter for debugging)
+1. Verify context propagation is configured
+2. Check that spans are properly ended
+3. Ensure parent spans exist for child spans
+4. Verify exporter is working
 
-## Further Reading
+## Migration from Old Implementation
 
-- [OpenTelemetry Documentation](https://opentelemetry.io/docs/)
-- [Grafana Tempo Documentation](https://grafana.com/docs/tempo/latest/)
-- [OpenTelemetry Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/)
+The new implementation is backward compatible. Update your configuration to use the new options:
+
+```typescript
+// Old
+TelemetryModule.forRoot({
+  tracing: {
+    sampler: 0.1,
+    exporter: { type: 'otlp', endpoint: '...' },
+  },
+});
+
+// New (same, but with more options)
+TelemetryModule.forRoot({
+  tracing: {
+    sampler: 0.1,
+    exporter: { type: 'otlp', endpoint: '...' },
+  },
+  metrics: { ... }, // New
+  logs: { ... }, // New
+});
+```
+
+## License
+
+Part of `@code-hive/nestjs` package.

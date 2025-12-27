@@ -1,23 +1,10 @@
-import { readFileSync } from 'fs';
-import { IncomingMessage, ServerResponse } from 'http';
-import * as os from 'os';
-import { join } from 'path';
-
-import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
-import { OTLPTraceExporter as OTLPTraceExporterHttp } from '@opentelemetry/exporter-trace-otlp-http';
-import { resourceFromAttributes, defaultResource } from '@opentelemetry/resources';
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import {
-  AlwaysOnSampler,
-  AlwaysOffSampler,
-  TraceIdRatioBasedSampler,
-} from '@opentelemetry/sdk-trace-base';
-import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 
 import { Environments } from '../enums';
 
-import type { Span } from '@opentelemetry/api';
+import { createAutoInstrumentations } from './instrumentations/auto-instrumentations';
+import { createNestJSInstrumentation } from './instrumentations/nestjs.instrumentation';
+import { startSDK, SDKFactoryOptions } from './sdk/sdk.factory';
 
 // Store the SDK instance so TelemetryModule can reuse it
 let globalSdk: NodeSDK | null = null;
@@ -54,7 +41,7 @@ export type InitTelemetryOptions = Partial<{
   environment: string;
 
   /**
-   * OTLP endpoint for traces
+   * OTLP endpoint for traces/metrics/logs
    * @default process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317'
    */
   endpoint: string;
@@ -81,30 +68,9 @@ export type InitTelemetryOptions = Partial<{
    * HTTP instrumentation options
    */
   httpInstrumentation?: {
-    /**
-     * Capture HTTP request/response headers
-     * @default true
-     */
     captureHeaders?: boolean;
-
-    /**
-     * Capture HTTP request/response bodies
-     * @default false (to avoid memory issues with large bodies)
-     */
     captureBodies?: boolean;
-
-    /**
-     * Maximum body size to capture (in bytes)
-     * Bodies larger than this will be truncated
-     * @default 10000 (10KB)
-     */
     maxBodySize?: number;
-
-    /**
-     * Paths to ignore when capturing bodies
-     * Useful for skipping health checks, metrics, etc.
-     * @default ['/health', '/metrics', '/healthz', '/ready']
-     */
     ignorePaths?: string[];
   };
 }>;
@@ -130,237 +96,88 @@ export const initOpenTelemetry = (options: InitTelemetryOptions = {}) => {
   const isTest = environment === Environments.TEST;
 
   // Check if telemetry is disabled
-  if (options.enabled === false || (isTest && options.enabled !== true)) {
+  if (
+    options.enabled === false ||
+    (isTest && options.enabled !== true && options.enabled !== undefined)
+  ) {
     if (!options.silent) {
       console.log('OpenTelemetry initialization skipped (disabled or test environment)');
     }
     return null;
   }
 
-  // Get service name and version
-  let serviceName = options.serviceName || process.env.APP_NAME;
-  let serviceVersion = options.serviceVersion || process.env.APP_VERSION;
-
-  // Try to read from package.json if version not provided
-  if (!serviceVersion) {
-    try {
-      const packagePath = join(process.cwd(), 'package.json');
-      const packageJson = JSON.parse(readFileSync(packagePath, 'utf-8'));
-      serviceVersion = packageJson.version || 'unknown';
-      if (!serviceName) {
-        serviceName = packageJson.name || 'nestjs-app';
-      }
-    } catch {
-      serviceVersion = serviceVersion || 'unknown';
-      serviceName = serviceName || 'nestjs-app';
-    }
-  }
-
-  // Build resource attributes
-  const resourceAttributes: Record<string, string> = {
-    [ATTR_SERVICE_NAME]: serviceName || 'nestjs-app',
-    [ATTR_SERVICE_VERSION]: serviceVersion || 'unknown',
-    'deployment.environment': environment,
-    'host.name': os.hostname(),
-  };
-
-  // Configure trace exporter
+  // Build SDK options
   const endpoint =
     options.endpoint || process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317';
   const protocol = options.protocol || 'grpc';
 
-  const traceExporter =
-    protocol === 'grpc'
-      ? new OTLPTraceExporter({
-          url: endpoint,
-        })
-      : new OTLPTraceExporterHttp({
-          url: endpoint,
-        });
-
-  // Configure sampler
-  let sampler;
-  if (options.sampler) {
-    if (options.sampler === 'always') {
-      sampler = new AlwaysOnSampler();
-    } else if (options.sampler === 'never') {
-      sampler = new AlwaysOffSampler();
-    } else if (typeof options.sampler === 'number') {
-      sampler = new TraceIdRatioBasedSampler(options.sampler);
-    }
-  } else {
-    // Default: always in development, 10% in production
-    sampler = isDevelopment ? new AlwaysOnSampler() : new TraceIdRatioBasedSampler(0.1);
-  }
-
-  // Configure HTTP instrumentation options
-  const httpOptions = options.httpInstrumentation || {};
-  const captureHeaders = httpOptions.captureHeaders !== false; // Default: true
-  const captureBodies = httpOptions.captureBodies === true; // Default: false
-  const maxBodySize = httpOptions.maxBodySize || 10000; // Default: 10KB
-  const ignorePaths = httpOptions.ignorePaths || ['/health', '/metrics', '/healthz', '/ready'];
-
-  // Helper function to safely capture body from request/response
-  const captureBody = (body: unknown, maxSize: number): string | undefined => {
-    if (!body) return undefined;
-
-    try {
-      let bodyStr: string;
-      if (typeof body === 'string') {
-        bodyStr = body;
-      } else if (Buffer.isBuffer(body)) {
-        bodyStr = body.toString('utf-8');
-      } else if (typeof body === 'object') {
-        bodyStr = JSON.stringify(body);
-      } else {
-        bodyStr = String(body);
-      }
-
-      if (bodyStr.length > maxSize) {
-        return `${bodyStr.substring(0, maxSize)}... [truncated, original size: ${bodyStr.length} bytes]`;
-      }
-      return bodyStr;
-    } catch {
-      return '[unable to serialize body]';
-    }
-  };
-
-  // Helper to check if path should be ignored
-  const shouldIgnorePath = (path: string): boolean => {
-    return ignorePaths.some((ignorePath) => path.includes(ignorePath));
-  };
-
-  // Configure auto-instrumentations
-  // Enable all by default - they will be patched before modules are loaded
-  const instrumentations = getNodeAutoInstrumentations({
-    '@opentelemetry/instrumentation-http': {
-      enabled: true,
-      requestHook: (span: Span, request: IncomingMessage | unknown) => {
-        if (!captureHeaders && !captureBodies) return;
-
-        const req = request as IncomingMessage & {
-          headers?: Record<string, string | string[]>;
-          body?: unknown;
-          url?: string;
-        };
-
-        // Capture request headers
-        if (captureHeaders && req.headers) {
-          const headers = req.headers;
-          Object.keys(headers).forEach((key) => {
-            const value = headers[key];
-            if (value !== undefined) {
-              span.setAttribute(
-                `http.request.header.${key.toLowerCase()}`,
-                Array.isArray(value) ? value.join(', ') : value
-              );
-            }
-          });
-        }
-
-        // Capture request body (if available and not ignored)
-        if (captureBodies && req.url) {
-          const url = req.url || '';
-          if (!shouldIgnorePath(url)) {
-            // For incoming requests, body is typically parsed by NestJS
-            // We can try to get it from the request object if it's been parsed
-            if (req.body !== undefined) {
-              const bodyStr = captureBody(req.body, maxBodySize);
-              if (bodyStr) {
-                span.setAttribute('http.request.body', bodyStr);
-              }
-            }
-          }
-        }
-      },
-      responseHook: (span: Span, response: ServerResponse | IncomingMessage) => {
-        if (!captureHeaders && !captureBodies) return;
-
-        // Response hook receives ServerResponse for server-side or IncomingMessage for client-side
-        // For server responses, we need to use getHeaders() method
-        if (captureHeaders) {
-          try {
-            let headers: Record<string, string | string[] | undefined> | undefined;
-
-            // Check if it's a ServerResponse (has getHeaders method)
-            if ('getHeaders' in response && typeof response.getHeaders === 'function') {
-              headers = response.getHeaders() as Record<string, string | string[] | undefined>;
-            }
-            // Fallback to headers property if available
-            else if ('headers' in response) {
-              headers = response.headers as Record<string, string | string[] | undefined>;
-            }
-
-            if (headers) {
-              Object.keys(headers).forEach((key) => {
-                const value = headers![key];
-                if (value !== undefined) {
-                  span.setAttribute(
-                    `http.response.header.${key.toLowerCase()}`,
-                    Array.isArray(value) ? value.join(', ') : String(value)
-                  );
-                }
-              });
-            }
-          } catch {
-            // Silently fail if headers can't be accessed
-          }
-        }
-
-        // Note: Response bodies are not available in responseHook because they're streamed
-        // To capture response bodies, use a NestJS interceptor that has access to the response data
-      },
-    },
-    '@opentelemetry/instrumentation-pg': {
-      enabled: true,
-      requireParentSpan: false,
-      enhancedDatabaseReporting: true,
-      addSqlCommenterCommentToQueries: false,
-      responseHook: (span: Span, responseInfo: { data?: unknown; rowCount?: number }) => {
-        // Capture row count if available
-        if (responseInfo.rowCount !== undefined) {
-          span.setAttribute('db.rows_affected', responseInfo.rowCount);
-          span.setAttribute('db.result.count', responseInfo.rowCount);
-        }
-
-        // Add query execution metadata
-        if (responseInfo.data !== undefined) {
-          const resultType = Array.isArray(responseInfo.data) ? 'array' : typeof responseInfo.data;
-          span.setAttribute('db.result.type', resultType);
-          if (Array.isArray(responseInfo.data)) {
-            span.setAttribute('db.result.length', responseInfo.data.length);
-          }
-        }
-      },
-    },
-    '@opentelemetry/instrumentation-redis': {
-      enabled: true,
-    },
+  // Create instrumentations
+  const autoInstrumentations = createAutoInstrumentations({
+    enabled: true,
+    http: options.httpInstrumentation,
+    pg: true,
+    redis: true,
+    grpc: true,
   });
 
-  // Create resource from attributes and merge with default resource
-  const resource = defaultResource().merge(resourceFromAttributes(resourceAttributes));
+  // Add NestJS instrumentation if available
+  const nestjsInstrumentation = createNestJSInstrumentation(true);
+  const instrumentations = nestjsInstrumentation
+    ? [...autoInstrumentations, nestjsInstrumentation]
+    : autoInstrumentations;
 
-  // Create and start SDK
-  const sdk = new NodeSDK({
-    resource,
-    traceExporter,
-    sampler,
+  // Create SDK options
+  const sdkOptions: SDKFactoryOptions = {
+    enabled: options.enabled === undefined ? true : options.enabled,
+    serviceName: options.serviceName,
+    serviceVersion: options.serviceVersion,
+    environment,
+    tracing: {
+      enabled: true,
+      sampler: options.sampler || (isDevelopment ? 'always' : 0.1),
+      exporter: {
+        type: 'otlp',
+        endpoint,
+        protocol,
+      },
+      processor: {
+        type: 'batch',
+      },
+    },
+    metrics: {
+      enabled: true,
+      exporter: {
+        type: 'otlp',
+        endpoint,
+        protocol,
+      },
+    },
+    logs: {
+      enabled: true,
+      exporter: {
+        type: 'otlp',
+        endpoint,
+        protocol,
+      },
+    },
     instrumentations,
-  });
+  };
 
+  // Start SDK
   try {
-    sdk.start();
-    globalSdk = sdk; // Store globally for TelemetryModule to reuse
-    if (!options.silent) {
+    const sdk = startSDK(sdkOptions);
+    globalSdk = sdk;
+
+    if (!options.silent && sdk) {
       console.log('OpenTelemetry SDK initialized successfully', {
-        serviceName,
-        serviceVersion,
+        serviceName: options.serviceName || process.env.APP_NAME || 'nestjs-app',
+        serviceVersion: options.serviceVersion || process.env.APP_VERSION || 'unknown',
         environment,
         endpoint,
         protocol,
       });
     }
+
     return sdk;
   } catch (error) {
     if (!options.silent) {

@@ -148,12 +148,34 @@ export class LoggerService implements NestLoggerService {
   /**
    * Get automatic context from AsyncLocalStorage and stack trace
    * Filters out invalid context values and improves context extraction
+   * Also includes OpenTelemetry trace context when available
    */
   private getAutoContext(): Record<string, unknown> {
     const context = loggerContext.getAll();
     const caller = getCallerContext();
 
-    const autoContext: Record<string, unknown> = { ...context };
+    // Try to get trace context from OpenTelemetry if available
+    const otelTraceContext: Record<string, unknown> = {};
+    try {
+      // Dynamic import to avoid requiring OpenTelemetry if not installed
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { trace } = require('@opentelemetry/api');
+      const activeSpan = trace.getActiveSpan();
+      if (activeSpan) {
+        const spanContext = activeSpan.spanContext();
+        // Only use OpenTelemetry trace IDs if not already in context (OpenTelemetry is source of truth)
+        if (!context.traceId && spanContext.traceId) {
+          otelTraceContext.traceId = spanContext.traceId;
+        }
+        if (!context.spanId && spanContext.spanId) {
+          otelTraceContext.spanId = spanContext.spanId;
+        }
+      }
+    } catch {
+      // OpenTelemetry not available, ignore
+    }
+
+    const autoContext: Record<string, unknown> = { ...context, ...otelTraceContext };
 
     // Only add service if it's meaningful (not internal framework class)
     // AND if component is not 'http' (HTTP logs shouldn't have service/method)

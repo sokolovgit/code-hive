@@ -1,8 +1,8 @@
 import { SetMetadata } from '@nestjs/common';
 
-export const TRACE_METADATA_KEY = 'telemetry:trace';
+export const SPAN_METADATA_KEY = 'telemetry:span';
 
-export interface TraceOptions {
+export interface SpanOptions {
   /**
    * Span name (defaults to method name)
    */
@@ -36,24 +36,17 @@ export interface TraceOptions {
    * @default true
    */
   recordException?: boolean;
-
-  /**
-   * Whether to set span status based on result
-   * @default true
-   */
-  setStatus?: boolean;
 }
 
 /**
- * @Trace() decorator - Automatically creates a span for the method
- * This is an alias for @Span() for backward compatibility
+ * @Span() decorator - Automatically creates a span for the method
  *
  * @example
  * ```typescript
- * @Trace({ name: 'users.find', attributes: { 'db.table': 'users' } })
+ * @Span({ name: 'users.find', attributes: { 'db.table': 'users' } })
  * async findOne(id: string) {
  *   return this.db.select()...
  * }
  * ```
  */
-export const Trace = (options?: TraceOptions) => SetMetadata(TRACE_METADATA_KEY, options || {});
+export const Span = (options?: SpanOptions) => SetMetadata(SPAN_METADATA_KEY, options || {});

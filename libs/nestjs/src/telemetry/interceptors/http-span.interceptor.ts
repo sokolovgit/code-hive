@@ -1,16 +1,11 @@
-import {
-  Inject,
-  Injectable,
-  NestInterceptor,
-  ExecutionContext,
-  CallHandler,
-  Optional,
-} from '@nestjs/common';
+import { Inject, Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common';
 import { trace } from '@opentelemetry/api';
 import { Request, Response } from 'express';
+import { ClsService } from 'nestjs-cls';
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 
+import { LoggerContextService } from '../../logger';
 import { TELEMETRY_OPTIONS } from '../telemetry.constants';
 import { TelemetryModuleOptions } from '../telemetry.types';
 
@@ -22,7 +17,9 @@ import { TelemetryModuleOptions } from '../telemetry.types';
 @Injectable()
 export class HttpSpanInterceptor implements NestInterceptor {
   constructor(
-    @Optional() @Inject(TELEMETRY_OPTIONS) private readonly options?: TelemetryModuleOptions
+    @Inject(TELEMETRY_OPTIONS) private readonly options: TelemetryModuleOptions,
+    private readonly cls: ClsService,
+    private readonly loggerContext: LoggerContextService
   ) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
@@ -76,8 +73,31 @@ export class HttpSpanInterceptor implements NestInterceptor {
     return next.handle().pipe(
       tap((data: unknown) => {
         // Get the active span (created by HTTP instrumentation)
-        // The HTTP instrumentation creates a span for each request, which should be active here
         const activeSpan = trace.getActiveSpan();
+
+        // Sync trace context to CLS and logger context for automatic log correlation
+        if (activeSpan) {
+          const spanContext = activeSpan.spanContext();
+          const traceId = spanContext.traceId;
+          const spanId = spanContext.spanId;
+          const parentSpan = trace.getActiveSpan();
+          const parentSpanId = parentSpan?.spanContext().spanId;
+
+          // Update CLS with trace context (logger will automatically pick this up)
+          this.cls.set('traceId', traceId);
+          this.cls.set('spanId', spanId);
+          if (parentSpanId) {
+            this.cls.set('parentSpanId', parentSpanId);
+          }
+
+          // Also update logger context service
+          this.loggerContext.set('traceId', traceId);
+          this.loggerContext.set('spanId', spanId);
+          if (parentSpanId) {
+            this.loggerContext.set('parentSpanId', parentSpanId);
+          }
+        }
+
         if (!activeSpan) {
           return;
         }
