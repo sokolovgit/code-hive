@@ -53,6 +53,12 @@ exporters:
     resource_to_telemetry_conversion:
       enabled: true
 
+  # Loki for logs (via OTLP - Loki 3.0+ supports native OTLP ingestion)
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+    tls:
+      insecure: true
+
   # Debug exporter for troubleshooting
   debug:
     verbosity: basic
@@ -77,11 +83,11 @@ service:
       processors: [memory_limiter, batch, resource]
       exporters: [prometheus]
 
-    # Logs pipeline
+    # Logs pipeline (for local services sending logs via OTLP)
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch, resource]
-      exporters: [debug]
+      exporters: [otlphttp/loki]
 
   telemetry:
     logs:

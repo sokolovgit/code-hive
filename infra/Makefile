@@ -12,7 +12,7 @@
 #   services     - users-service, auth-service, payment-service
 # ============================================================================
 
-.PHONY: help dev full observability core tools up down logs restart clean ps build rebuild shell base
+.PHONY: help dev full local local-down local-logs local-ps observability core tools up down logs restart clean ps build rebuild shell base
 
 # Colors for output
 CYAN := \033[36m
@@ -26,7 +26,8 @@ help:
 	@echo "$(CYAN)Code Hive Infrastructure$(RESET)"
 	@echo ""
 	@echo "$(GREEN)Quick Start:$(RESET)"
-	@echo "  make dev            Start databases + services (fast development)"
+	@echo "  make local          Start infra only (for running services locally)"
+	@echo "  make dev            Start databases + services in Docker"
 	@echo "  make full           Start everything including observability"
 	@echo "  make down           Stop all running containers"
 	@echo ""
@@ -124,6 +125,43 @@ full: base
 	@echo "  Prometheus:     http://localhost:9090"
 	@echo "  Tempo:          http://localhost:3200"
 	@echo "  Loki:           http://localhost:3100"
+
+# ============================================================================
+# LOCAL DEVELOPMENT (services run locally, infra in Docker)
+# ============================================================================
+
+# Start infrastructure for local service development
+local:
+	@echo "$(CYAN)Starting infrastructure for local development...$(RESET)"
+	@docker compose -f docker-compose.local.yml up -d
+	@echo ""
+	@echo "$(GREEN)✓ Infrastructure ready!$(RESET)"
+	@echo ""
+	@echo "$(YELLOW)Your services should connect to:$(RESET)"
+	@echo "  DATABASE_HOST=localhost:5432"
+	@echo "  REDIS_HOST=localhost:6379"
+	@echo "  OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317"
+	@echo ""
+	@echo "$(YELLOW)Dashboards:$(RESET)"
+	@echo "  Grafana:    http://localhost:3001 (admin/password)"
+	@echo "  Prometheus: http://localhost:9090"
+	@echo "  Mailpit:    http://localhost:8025"
+	@echo ""
+	@echo "$(CYAN)Run your service: pnpm dev$(RESET)"
+
+# Stop local infrastructure
+local-down:
+	@echo "$(CYAN)Stopping local infrastructure...$(RESET)"
+	@docker compose -f docker-compose.local.yml down
+	@echo "$(GREEN)✓ Stopped$(RESET)"
+
+# Follow local infrastructure logs
+local-logs:
+	@docker compose -f docker-compose.local.yml logs -f
+
+# Show local infrastructure status
+local-ps:
+	@docker compose -f docker-compose.local.yml ps
 
 # ============================================================================
 # SELECTIVE STARTUP

@@ -143,6 +143,9 @@ services:
       prometheus:
         condition: service_healthy
         required: false
+      loki:
+        condition: service_started
+        required: false
     healthcheck:
       test: ['CMD', 'wget', '-q', '--spider', 'http://localhost:13133']
       interval: 10s

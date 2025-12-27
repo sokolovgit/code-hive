@@ -32,10 +32,19 @@ storage_config:
   filesystem:
     directory: /loki/chunks
 
+# Limits and OTLP ingestion config
 limits_config:
   allow_structured_metadata: true
   reject_old_samples: true
   reject_old_samples_max_age: 168h
+  # OTLP config for receiving logs from OTEL Collector
+  otlp_config:
+    resource_attributes:
+      attributes_config:
+        - action: index_label
+          attributes:
+            - service.name
+            - deployment.environment
 
 analytics:
   reporting_enabled: false
