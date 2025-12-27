@@ -1,263 +1,206 @@
-# Infrastructure Setup
+# Code Hive Infrastructure
 
-This directory contains the Docker infrastructure configuration for the Code Hive monorepo.
-
-## Architecture Overview
-
-The infrastructure follows a **layered approach**:
-
-1. **Shared Infrastructure** (`docker-compose.yml`) - Databases, message brokers, and other shared services
-2. **Development Overrides** (`docker-compose.override.yml`) - Development-specific configurations
-3. **Service Definitions** (`docker-compose.services.yml`) - Application services (optional, for Docker-based development)
-4. **Base Images** (`docker/base/`) - Reusable Docker images for services
-
-## Best Practices
-
-### ✅ Recommended Approach
-
-1. **Shared Infrastructure Compose** - All databases, message brokers, and shared services in one file
-2. **Service-Specific Dockerfiles** - Each service has its own Dockerfile extending base images
-3. **Override Pattern** - Use `docker-compose.override.yml` for environment-specific configs
-4. **Network Isolation** - All services on the same Docker network for service discovery
-5. **Health Checks** - All infrastructure services have health checks for proper startup ordering
-
-### ❌ Anti-Patterns to Avoid
-
-- ❌ Don't put application services in the shared infrastructure compose
-- ❌ Don't duplicate infrastructure services across multiple compose files
-- ❌ Don't hardcode credentials (use environment variables)
-- ❌ Don't expose services unnecessarily (use internal networks)
+Modern, profile-based Docker infrastructure for microservices with full observability.
 
 ## Quick Start
 
-### 1. Setup Environment
-
 ```bash
-# Option A: Use setup script (recommended)
 cd infra
-make setup
 
-# Option B: Manual setup
-cp infra/env.template infra/.env
-# Edit infra/.env with your configuration
+# Development mode (fast startup)
+make dev
+
+# Full mode (with monitoring)
+make full
+
+# Stop everything
+make down
 ```
 
-### 2. Start Infrastructure
+## Architecture
+
+### Profile-Based Design
+
+Single `docker-compose.yml` with profiles:
+
+| Profile         | Services                          | Purpose                |
+| --------------- | --------------------------------- | ---------------------- |
+| `core`          | postgres, redis                   | Essential databases    |
+| `otel`          | otel-collector                    | OpenTelemetry pipeline |
+| `observability` | grafana, prometheus, loki, tempo  | Full monitoring        |
+| `exporters`     | node-exporter, postgres-exporter  | Metrics exporters      |
+| `tools`         | adminer, redis-commander, mailpit | Dev utilities          |
+| `services`      | users-service, ...                | App microservices      |
+
+### Docker Image Hierarchy
+
+```
+codehive-base:latest          <- Base image (node + deps + libs)
+    │
+    ├── users-service:dev     <- Extends base
+    ├── auth-service:dev      <- Extends base
+    └── payment-service:dev   <- Extends base
+```
+
+All Dockerfiles are in `infra/docker/`:
+
+```
+infra/docker/
+├── base/
+│   └── node.Dockerfile       # Base image
+└── services/
+    ├── entrypoint.sh         # Shared entrypoint
+    ├── users.Dockerfile      # Users service
+    └── ...                   # Other services
+```
+
+## Commands
+
+### Quick Start
+
+| Command     | Description                         |
+| ----------- | ----------------------------------- |
+| `make dev`  | Start databases + services          |
+| `make full` | Start everything with observability |
+| `make down` | Stop all containers                 |
+
+### Selective
+
+| Command              | Description     |
+| -------------------- | --------------- |
+| `make core`          | Only databases  |
+| `make observability` | Only monitoring |
+| `make tools`         | Dev utilities   |
+
+### Build
+
+| Command        | Description           |
+| -------------- | --------------------- |
+| `make base`    | Build base image      |
+| `make build`   | Build all images      |
+| `make rebuild` | Rebuild without cache |
+
+### Operations
+
+| Command           | Description           |
+| ----------------- | --------------------- |
+| `make ps`         | Container status      |
+| `make logs`       | Follow all logs       |
+| `make logs-users` | Service-specific logs |
+
+## Access URLs
+
+| Service         | URL                   | Credentials    |
+| --------------- | --------------------- | -------------- |
+| Users Service   | http://localhost:3000 | -              |
+| Grafana         | http://localhost:3001 | admin/password |
+| Adminer         | http://localhost:8080 | admin/password |
+| Redis Commander | http://localhost:8081 | -              |
+| Mailpit         | http://localhost:8025 | -              |
+
+## Adding a New Service
+
+### 1. Create Dockerfile
 
 ```bash
-# Start all infrastructure services
-cd infra
-docker-compose up -d
-
-# Or start specific services
-docker-compose up -d postgres redis
-
-# View logs
-docker-compose logs -f
-
-# Stop infrastructure
-docker-compose down
+cp infra/docker/services/users.Dockerfile infra/docker/services/your-service.Dockerfile
 ```
 
-### 3. Development Setup
+Edit and update:
 
-For local development, you typically have two options:
+- `SERVICE_NAME=your-service`
+- `npm_package_name=@code-hive/your-service`
+- Copy paths
 
-#### Option A: Infrastructure in Docker, Services Locally (Recommended)
+### 2. Add database
 
-```bash
-# Start infrastructure
-cd infra
-docker-compose up -d
+Edit `config/postgres/init-databases.sql`:
 
-# Run services locally with pnpm
-cd ../..
-pnpm dev
+```sql
+CREATE DATABASE your_service_db;
+GRANT ALL PRIVILEGES ON DATABASE your_service_db TO admin;
 ```
 
-**Benefits:**
+### 3. Add to docker-compose.yml
 
-- Fast hot-reload
-- Easy debugging
-- No Docker overhead for code changes
-- Services connect to Docker infrastructure via localhost
-
-#### Option B: Everything in Docker
-
-```bash
-# Copy and customize service compose file
-cp infra/docker-compose.services.yml.example infra/docker-compose.services.yml
-
-# Start everything
-cd infra
-docker-compose -f docker-compose.yml -f docker-compose.services.yml up
+```yaml
+your-service:
+  build:
+    <<: *build-common
+    dockerfile: infra/docker/services/your-service.Dockerfile
+    target: development
+  container_name: ${PROJECT_NAME:-codehive}-your-service
+  profiles: ["services"]
+  environment:
+    <<: *service-env
+    SERVICE_NAME: your-service
+    PORT: 3001
+    DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-password}@postgres:5432/your_service_db
+  ports:
+    - "3001:3001"
+  volumes:
+    - ${WORKSPACE_ROOT:-..}/apps/services/your-service/src:/app/apps/services/your-service/src
+    - ${WORKSPACE_ROOT:-..}/libs/nestjs/src:/app/libs/nestjs/src
+  <<: *service-common
+  depends_on:
+    <<: *service-depends
 ```
 
-**Benefits:**
+## Volume Strategy
 
-- Consistent environment
-- Isolated from host system
-- Good for testing Docker builds
+### Development
 
-### 4. Enable Development Tools (Optional)
+Only source code is mounted (for hot-reload):
 
-```bash
-# Copy override file
-cp infra/docker-compose.override.yml.example infra/docker-compose.override.yml
-
-# Start with development tools (pgAdmin, Redis Commander)
-docker-compose -f docker-compose.yml -f docker-compose.override.yml up -d
+```yaml
+volumes:
+  - ./apps/services/users/src:/app/apps/services/users/src
+  - ./libs/nestjs/src:/app/libs/nestjs/src
 ```
 
-Access:
+Everything else (deps, configs) is in the Docker image.
 
-- **pgAdmin**: http://localhost:8080 (admin@codehive.local / admin)
-- **Redis Commander**: http://localhost:8081
+### Production
+
+No mounts - everything baked in.
 
 ## File Structure
 
 ```
 infra/
-├── docker-compose.yml              # Shared infrastructure (databases, brokers)
-├── docker-compose.override.yml     # Development overrides (optional)
-├── docker-compose.services.yml     # Application services (optional)
-├── .env                            # Environment variables (gitignored)
-├── env.template                    # Environment template
-├── README.md                       # This file
-└── docker/
-    ├── base/                       # Base Docker images
-    │   ├── node.Dockerfile
-    │   └── python.Dockerfile
-    └── services/                   # Service-specific Dockerfiles
-        └── users.Dockerfile
+├── docker-compose.yml          # Unified compose
+├── Makefile                    # Commands
+├── docker/
+│   ├── base/
+│   │   └── node.Dockerfile     # Base image
+│   └── services/
+│       ├── entrypoint.sh       # Shared entrypoint
+│       └── *.Dockerfile        # Service Dockerfiles
+└── config/
+    ├── grafana/
+    ├── loki/
+    ├── otel-collector/
+    ├── postgres/
+    ├── prometheus/
+    ├── promtail/
+    └── tempo/
 ```
-
-## Services
-
-### PostgreSQL
-
-- **Port**: 5432 (configurable via `POSTGRES_PORT`)
-- **Database**: `codehive` (configurable via `POSTGRES_DB`)
-- **User**: `postgres` (configurable via `POSTGRES_USER`)
-- **Password**: `postgres` (configurable via `POSTGRES_PASSWORD`)
-- **Connection String**: `postgresql://postgres:postgres@localhost:5432/codehive`
-
-### Redis
-
-- **Port**: 6379 (configurable via `REDIS_PORT`)
-- **Password**: `redis` (configurable via `REDIS_PASSWORD`)
-- **Connection String**: `redis://:redis@localhost:6379`
-- **Use Cases**: BullMQ queues, caching, sessions
-
-## Building Base Images
-
-Before using service-specific Dockerfiles, build the base images:
-
-```bash
-# Build base Node.js image
-docker build -f infra/docker/base/node.Dockerfile -t code-hive-node-base:latest .
-
-# Build base Python image (if needed)
-docker build -f infra/docker/base/python.Dockerfile -t code-hive-python-base:latest .
-```
-
-## Environment Variables
-
-All services should use environment variables for configuration. See `.env.example` for available variables.
-
-### Service Environment Variables
-
-Each service should define its own environment variables. Example for users service:
-
-```bash
-# apps/services/users/.env.example
-NODE_ENV=development
-PORT=3000
-HOST=0.0.0.0
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/codehive
-REDIS_URL=redis://:redis@localhost:6379
-```
-
-## Networking
-
-All services are on the `code-hive-network` Docker network, allowing them to communicate using service names:
-
-- `postgres` - PostgreSQL database
-- `redis` - Redis server
-- `users-service` - Users microservice
-- `auth-service` - Auth microservice
-- etc.
-
-## Data Persistence
-
-Volumes are used for data persistence:
-
-- `postgres_data` - PostgreSQL data
-- `redis_data` - Redis data
-- `pgadmin_data` - pgAdmin configuration (if enabled)
-
-To reset data:
-
-```bash
-docker-compose down -v  # Removes volumes
-```
-
-## Health Checks
-
-All infrastructure services have health checks to ensure proper startup ordering:
-
-```bash
-# Check service health
-docker-compose ps
-
-# Wait for services to be healthy
-docker-compose up -d --wait
-```
-
-## Production Considerations
-
-For production:
-
-1. **Use managed services** (AWS RDS, ElastiCache, etc.) instead of Docker containers
-2. **Use secrets management** (AWS Secrets Manager, HashiCorp Vault, etc.)
-3. **Use separate compose files** for production (`docker-compose.prod.yml`)
-4. **Enable SSL/TLS** for all connections
-5. **Use read replicas** for databases
-6. **Implement backup strategies**
-7. **Use resource limits** in compose files
-8. **Monitor and log** all services
 
 ## Troubleshooting
 
-### Services can't connect to database
-
-1. Check if infrastructure is running: `docker-compose ps`
-2. Verify network: `docker network ls | grep code-hive`
-3. Check connection string format
-4. Verify credentials in `.env`
-
-### Port conflicts
-
-If ports are already in use:
-
-1. Change ports in `.env` file
-2. Or stop conflicting services
-3. Check: `lsof -i :5432` (for PostgreSQL)
-
-### Volume permissions
-
-If you encounter permission issues:
+### Base image not found
 
 ```bash
-# Fix PostgreSQL volume permissions
-docker-compose down
-sudo chown -R 999:999 infra/postgres_data
-docker-compose up -d
+make base  # Build base image first
 ```
 
-## Additional Resources
+### Hot-reload not working
 
-- [Docker Compose Documentation](https://docs.docker.com/compose/)
-- [PostgreSQL Docker Image](https://hub.docker.com/_/postgres)
-- [Redis Docker Image](https://hub.docker.com/_/redis)
-- [Docker Networking](https://docs.docker.com/network/)
+Ensure only `src/` directories are mounted, not entire service.
+
+### Database connection failed
+
+```bash
+make ps    # Check postgres is healthy
+make db    # Connect manually
+```

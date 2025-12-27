@@ -1,0 +1,115 @@
+{
+  "dashboard": {
+    "title": "Logs and Traces Correlation",
+    "tags": ["logs", "tracing", "correlation"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 1,
+    "refresh": "10s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Logs by Service",
+        "type": "logs",
+        "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
+        "datasource": { "type": "loki", "uid": "loki" },
+        "options": {
+          "dedupStrategy": "none",
+          "enableLogDetails": true,
+          "prettifyLogMessage": false,
+          "showCommonLabels": false,
+          "showLabels": false,
+          "showTime": true,
+          "sortOrder": "Descending",
+          "wrapLogMessage": false
+        },
+        "targets": [
+          {
+            "expr": "{service=~\".+\"}",
+            "refId": "A",
+            "datasource": { "type": "loki", "uid": "loki" }
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Logs with TraceID",
+        "type": "logs",
+        "gridPos": { "h": 10, "w": 12, "x": 0, "y": 10 },
+        "datasource": { "type": "loki", "uid": "loki" },
+        "options": {
+          "dedupStrategy": "none",
+          "enableLogDetails": true,
+          "prettifyLogMessage": false,
+          "showCommonLabels": false,
+          "showLabels": false,
+          "showTime": true,
+          "sortOrder": "Descending",
+          "wrapLogMessage": false
+        },
+        "targets": [
+          {
+            "expr": "{traceId!=\"\"}",
+            "refId": "A",
+            "datasource": { "type": "loki", "uid": "loki" }
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Correlated Trace",
+        "type": "traces",
+        "gridPos": { "h": 10, "w": 12, "x": 12, "y": 10 },
+        "datasource": { "type": "tempo", "uid": "tempo" },
+        "options": {
+          "dedupeBy": "traceID",
+          "spanBarType": "tag"
+        },
+        "targets": [
+          {
+            "queryType": "traceId",
+            "refId": "A",
+            "datasource": { "type": "tempo", "uid": "tempo" }
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Error Logs",
+        "type": "logs",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+        "datasource": { "type": "loki", "uid": "loki" },
+        "options": {
+          "dedupStrategy": "none",
+          "enableLogDetails": true,
+          "prettifyLogMessage": false,
+          "showCommonLabels": false,
+          "showLabels": false,
+          "showTime": true,
+          "sortOrder": "Descending",
+          "wrapLogMessage": false
+        },
+        "targets": [
+          {
+            "expr": "{level=\"error\"}",
+            "refId": "A",
+            "datasource": { "type": "loki", "uid": "loki" }
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Log Rate by Level",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+        "targets": [
+          {
+            "expr": "sum(rate({level=~\".+\"}[5m])) by (level)",
+            "refId": "A",
+            "datasource": { "type": "loki", "uid": "loki" }
+          }
+        ]
+      }
+    ]
+  }
+}

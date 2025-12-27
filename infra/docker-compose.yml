@@ -1,266 +1,457 @@
-# Shared Infrastructure Services
-# This compose file contains all shared infrastructure services (databases, message brokers, etc.)
-# that are used across multiple services in the monorepo.
+# Code Hive Infrastructure - Unified Docker Compose with Profiles
 #
-# Usage:
-#   docker-compose up -d                    # Start all infrastructure
-#   docker-compose up -d postgres redis     # Start specific services
-#   docker-compose down                      # Stop all infrastructure
+# PROFILES:
+#   core         - Essential databases (postgres, redis)
+#   observability - Full monitoring (grafana, prometheus, loki, tempo, promtail)
+#   exporters    - Metrics exporters (node-exporter, postgres-exporter)
+#   otel         - OpenTelemetry Collector
+#   tools        - Dev utilities (adminer, redis-commander)
+#   services     - Application microservices
 #
-# For development with services, use:
-#   docker-compose -f docker-compose.yml -f docker-compose.override.yml up
+# USAGE:
+#   make dev           # core + otel + services (fast startup for development)
+#   make full          # everything including observability
+#   make observability # just monitoring stack
 
+# ==============================================================================
+# YAML ANCHORS - Reusable configurations
+# ==============================================================================
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
+
+x-healthcheck-defaults: &healthcheck-defaults
+  interval: 10s
+  timeout: 5s
+  retries: 5
+  start_period: 10s
+
+x-restart-policy: &restart-policy
+  restart: unless-stopped
+
+x-service-common: &service-common
+  networks:
+    - backend
+  logging: *default-logging
+  <<: *restart-policy
+
+# Infrastructure-specific overrides for services
+# Only values that differ in Docker (hostnames) - service loads rest from .env
+x-service-env: &service-env
+  DATABASE_HOST: postgres
+  REDIS_HOST: redis
+  REDIS_URL: redis://redis:6379
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+  SMTP_HOST: mailpit
+  SMTP_PORT: 1025
+
+x-service-depends: &service-depends
+  postgres:
+    condition: service_healthy
+  redis:
+    condition: service_healthy
+
+# Common build args for all services
+x-build-common: &build-common
+  context: ${WORKSPACE_ROOT:-..}
+  args:
+    BASE_IMAGE: codehive-base:latest
+
+# ==============================================================================
+# SERVICES
+# ==============================================================================
 services:
-  # PostgreSQL Database
+  # ============================================================================
+  # BASE IMAGE - Built first, used by all services
+  # ============================================================================
+
+  base:
+    image: codehive-base:latest
+    build:
+      context: ${WORKSPACE_ROOT:-..}
+      dockerfile: infra/docker/base/node.Dockerfile
+    profiles: ['build'] # Only built explicitly, not started
+
+  # ============================================================================
+  # CORE PROFILE - Essential databases
+  # ============================================================================
+
   postgres:
     image: postgres:16-alpine
-    container_name: code-hive-postgres
-    restart: unless-stopped
+    container_name: ${PROJECT_NAME:-codehive}-postgres
+    profiles: ['core']
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-codehive}
-      PGDATA: /var/lib/postgresql/data/pgdata
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
     ports:
       - '${POSTGRES_PORT:-5432}:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./docker/postgres/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres}']
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - ./config/postgres/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
     networks:
-      - code-hive-network
+      - backend
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-admin}']
+    logging: *default-logging
+    <<: *restart-policy
 
-  # Redis (for BullMQ, caching, sessions)
   redis:
     image: redis:7-alpine
-    container_name: code-hive-redis
-    restart: unless-stopped
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis}
+    container_name: ${PROJECT_NAME:-codehive}-redis
+    profiles: ['core']
     ports:
       - '${REDIS_PORT:-6379}:6379'
     volumes:
       - redis_data:/data
-    healthcheck:
-      test: ['CMD', 'redis-cli', '--raw', 'incr', 'ping']
-      interval: 10s
-      timeout: 3s
-      retries: 5
     networks:
-      - code-hive-network
+      - backend
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ['CMD', 'redis-cli', 'ping']
+    logging: *default-logging
+    <<: *restart-policy
 
-  # Optional: Redis Commander (UI for Redis) - only in development
-  # Uncomment for development
-  # redis-commander:
-  #   image: rediscommander/redis-commander:latest
-  #   container_name: code-hive-redis-commander
-  #   restart: unless-stopped
-  #   environment:
-  #     REDIS_HOSTS: local:redis:6379
-  #     REDIS_PASSWORD: ${REDIS_PASSWORD:-redis}
-  #   ports:
-  #     - "8081:8081"
-  #   depends_on:
-  #     - redis
-  #   networks:
-  #     - code-hive-network
+  # ============================================================================
+  # OTEL PROFILE - OpenTelemetry Collector
+  # ============================================================================
 
-  # Optional: pgAdmin (PostgreSQL Admin UI) - only in development
-  # Uncomment for development
-  # pgadmin:
-  #   image: dpage/pgadmin4:latest
-  #   container_name: code-hive-pgadmin
-  #   restart: unless-stopped
-  #   environment:
-  #     PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@codehive.local}
-  #     PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
-  #     PGADMIN_CONFIG_SERVER_MODE: 'False'
-  #   ports:
-  #     - "8080:80"
-  #   depends_on:
-  #     - postgres
-  #   networks:
-  #     - code-hive-network
-  #   volumes:
-  #     - pgadmin_data:/var/lib/pgadmin
-
-  # OpenTelemetry Collector
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
-    container_name: code-hive-otel-collector
-    restart: unless-stopped
-    command: ['--config=/etc/otel-collector/config.yaml']
+    container_name: ${PROJECT_NAME:-codehive}-otel-collector
+    profiles: ['otel']
+    command: ['--config=/etc/otel-collector-config.yaml']
+    environment:
+      DEPLOYMENT_ENV: ${DEPLOYMENT_ENV:-development}
     volumes:
-      - ./docker/otel-collector/config.yaml:/etc/otel-collector/config.yaml:ro
+      - ./config/otel-collector/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
     ports:
-      - '4317:4317' # OTLP gRPC receiver
-      - '4318:4318' # OTLP HTTP receiver
-      - '8889:8889' # Prometheus metrics endpoint
-    depends_on:
-      - tempo
+      - '${OTEL_GRPC_PORT:-4317}:4317'
+      - '${OTEL_HTTP_PORT:-4318}:4318'
+      - '8889:8889'
     networks:
-      - code-hive-network
+      - backend
+      - observability
+    depends_on:
+      tempo:
+        condition: service_started
+        required: false
+      prometheus:
+        condition: service_healthy
+        required: false
     healthcheck:
-      # Simple check: verify otelcol process is running
-      # The metrics endpoint on 8889 is accessible from host, process check is sufficient
-      test: ['CMD', '/otelcol-contrib', '--version']
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      test: ['CMD', 'wget', '-q', '--spider', 'http://localhost:13133']
+      interval: 10s
+      timeout: 5s
+      retries: 5
       start_period: 20s
+    logging: *default-logging
+    <<: *restart-policy
 
-  # Grafana Tempo (Distributed Tracing)
+  # ============================================================================
+  # OBSERVABILITY PROFILE - Monitoring stack
+  # ============================================================================
+
   tempo:
     image: grafana/tempo:latest
-    container_name: code-hive-tempo
-    restart: unless-stopped
-    command: ['-config.file=/etc/tempo/config.yaml']
+    container_name: ${PROJECT_NAME:-codehive}-tempo
+    profiles: ['observability']
+    command: ['-config.file=/etc/tempo.yaml']
+    user: '0:0'
     volumes:
-      - ./docker/tempo/config.yaml:/etc/tempo/config.yaml:ro
+      - ./config/tempo/tempo.yaml:/etc/tempo.yaml:ro
       - tempo_data:/var/tempo
     ports:
-      - '3200:3200' # Tempo HTTP API
-      # OTLP ports removed - otel-collector receives external traffic and forwards to tempo internally
+      - '${TEMPO_PORT:-3200}:3200'
     networks:
-      - code-hive-network
-    healthcheck:
-      # Simple check: verify tempo process is running
-      # The /ready endpoint works but requires HTTP tools, process check is sufficient
-      test: ['CMD', '/tempo', '-version']
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
+      - observability
+    # Note: Healthcheck disabled - distroless image has no shell utilities
+    logging: *default-logging
+    <<: *restart-policy
 
-  # Prometheus (Metrics)
+  loki:
+    image: grafana/loki:latest
+    container_name: ${PROJECT_NAME:-codehive}-loki
+    profiles: ['observability']
+    command: -config.file=/etc/loki/local-config.yaml
+    user: '0:0'
+    volumes:
+      - ./config/loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    ports:
+      - '${LOKI_PORT:-3100}:3100'
+    networks:
+      - observability
+    # Note: Healthcheck disabled - distroless image has no shell utilities
+    logging: *default-logging
+    <<: *restart-policy
+
+  promtail:
+    image: grafana/promtail:latest
+    container_name: ${PROJECT_NAME:-codehive}-promtail
+    profiles: ['observability']
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./config/promtail/promtail-config.yaml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - observability
+    depends_on:
+      loki:
+        condition: service_started
+    logging: *default-logging
+    <<: *restart-policy
+
   prometheus:
     image: prom/prometheus:latest
-    container_name: code-hive-prometheus
-    restart: unless-stopped
+    container_name: ${PROJECT_NAME:-codehive}-prometheus
+    profiles: ['observability']
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}'
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
       - '--web.enable-lifecycle'
     volumes:
-      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     ports:
-      - '9090:9090'
-    depends_on:
-      - otel-collector
+      - '${PROMETHEUS_PORT:-9090}:9090'
     networks:
-      - code-hive-network
+      - observability
     healthcheck:
-      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:9090/-/healthy']
+      test: ['CMD', 'wget', '-q', '--spider', 'http://localhost:9090/-/ready']
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    logging: *default-logging
+    <<: *restart-policy
 
-  # Loki (Log Aggregation)
-  loki:
-    image: grafana/loki:latest
-    container_name: code-hive-loki
-    restart: unless-stopped
-    command: ['-config.file=/etc/loki/local-config.yaml']
-    volumes:
-      - loki_data:/loki
-    ports:
-      - '3100:3100'
-    networks:
-      - code-hive-network
-    healthcheck:
-      test: ['CMD', '/usr/bin/loki', '-version']
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
-    labels:
-      logging: promtail
-
-  # Promtail (Log Shipper)
-  promtail:
-    image: grafana/promtail:latest
-    container_name: code-hive-promtail
-    restart: unless-stopped
-    command: ['-config.file=/etc/promtail/config.yaml']
-    volumes:
-      - ./docker/promtail/config.yaml:/etc/promtail/config.yaml:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /var/log/app:/var/log/app:ro
-      - promtail_positions:/tmp
-    ports:
-      - '9080:9080'
-    depends_on:
-      - loki
-    networks:
-      - code-hive-network
-    healthcheck:
-      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:9080/ready']
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
-  # Grafana (Visualization)
   grafana:
     image: grafana/grafana:latest
-    container_name: code-hive-grafana
-    restart: unless-stopped
+    container_name: ${PROJECT_NAME:-codehive}-grafana
+    profiles: ['observability']
     environment:
-      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
-      - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_SERVER_ROOT_URL=http://localhost:3001
-      - GF_INSTALL_PLUGINS=grafana-piechart-panel
-      - GF_DATASOURCES_ALLOW_EDITING=true
-      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-password}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+      GF_SERVER_ROOT_URL: http://localhost:${GRAFANA_PORT:-3001}
+      GF_ANALYTICS_REPORTING_ENABLED: 'false'
+      GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
-      - '3001:3000'
+      - '${GRAFANA_PORT:-3001}:3000'
+    networks:
+      - observability
     depends_on:
       prometheus:
         condition: service_healthy
-      tempo:
-        condition: service_healthy
       loki:
-        condition: service_healthy
-    networks:
-      - code-hive-network
+        condition: service_started
+      tempo:
+        condition: service_started
     healthcheck:
-      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:3000/api/health']
+      test: ['CMD', 'wget', '-q', '--spider', 'http://localhost:3000/api/health']
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
-    labels:
-      logging: promtail
+    logging: *default-logging
+    <<: *restart-policy
 
+  # ============================================================================
+  # EXPORTERS PROFILE - Metrics exporters
+  # ============================================================================
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: ${PROJECT_NAME:-codehive}-postgres-exporter
+    profiles: ['exporters']
+    environment:
+      DATA_SOURCE_NAME: 'postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-postgres}?sslmode=disable'
+    ports:
+      - '9187:9187'
+    networks:
+      - backend
+      - observability
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging: *default-logging
+    <<: *restart-policy
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: ${PROJECT_NAME:-codehive}-node-exporter
+    profiles: ['exporters']
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    ports:
+      - '9100:9100'
+    networks:
+      - observability
+    logging: *default-logging
+    <<: *restart-policy
+
+  # ============================================================================
+  # TOOLS PROFILE - Development utilities
+  # ============================================================================
+
+  adminer:
+    image: adminer:latest
+    container_name: ${PROJECT_NAME:-codehive}-adminer
+    profiles: ['tools']
+    ports:
+      - '${ADMINER_PORT:-8080}:8080'
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DESIGN: dracula
+    logging: *default-logging
+    <<: *restart-policy
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: ${PROJECT_NAME:-codehive}-redis-commander
+    profiles: ['tools']
+    ports:
+      - '${REDIS_COMMANDER_PORT:-8081}:8081'
+    networks:
+      - backend
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_HOSTS: local:redis:6379
+    logging: *default-logging
+    <<: *restart-policy
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: ${PROJECT_NAME:-codehive}-mailpit
+    profiles: ['tools']
+    ports:
+      - '${MAILPIT_UI_PORT:-8025}:8025'
+      - '${MAILPIT_SMTP_PORT:-1025}:1025'
+    networks:
+      - backend
+    logging: *default-logging
+    <<: *restart-policy
+
+  # ============================================================================
+  # SERVICES PROFILE - Application microservices
+  # ============================================================================
+  #
+  # All service Dockerfiles are in infra/docker/services/
+  # Services extend from codehive-base:latest (built by 'base' service)
+  # ============================================================================
+
+  users-service:
+    build:
+      <<: *build-common
+      dockerfile: infra/docker/services/users.Dockerfile
+      target: development
+    image: ${PROJECT_NAME:-codehive}-users-service:dev
+    container_name: ${PROJECT_NAME:-codehive}-users-service
+    profiles: ['services']
+    env_file:
+      # Service loads its own .env file - we only override Docker-specific values
+      - path: ${WORKSPACE_ROOT:-..}/apps/services/users/.env
+        required: false
+    environment:
+      # Docker-specific overrides (hostnames differ from local dev)
+      <<: *service-env
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-password}@postgres:5432/users_service
+    ports:
+      - '3000:3000'
+    volumes:
+      # Mount source code for hot-reload only
+      - ${WORKSPACE_ROOT:-..}/apps/services/users/src:/app/apps/services/users/src
+      - ${WORKSPACE_ROOT:-..}/libs/nestjs/src:/app/libs/nestjs/src
+      - ${WORKSPACE_ROOT:-..}/libs/types/src:/app/libs/types/src
+    <<: *service-common
+    depends_on:
+      <<: *service-depends
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ['CMD-SHELL', 'curl -sf http://localhost:3000/api/v1/ping || exit 1']
+      interval: 30s
+      start_period: 60s
+
+  # ---------------------------------------------------------------------------
+  # TEMPLATE: Copy this block to add a new service
+  # ---------------------------------------------------------------------------
+  # 1. Create infra/docker/services/new-service.Dockerfile (copy from users.Dockerfile)
+  # 2. Create apps/services/new-service/.env with service-specific config
+  # 3. Add service block below:
+  #
+  # new-service:
+  #   build:
+  #     <<: *build-common
+  #     dockerfile: infra/docker/services/new-service.Dockerfile
+  #     target: development
+  #   image: ${PROJECT_NAME:-codehive}-new-service:dev
+  #   container_name: ${PROJECT_NAME:-codehive}-new-service
+  #   profiles: ["services"]
+  #   env_file:
+  #     - path: ${WORKSPACE_ROOT:-..}/apps/services/new-service/.env
+  #       required: false
+  #   environment:
+  #     # Only Docker-specific overrides (hostnames)
+  #     <<: *service-env
+  #     DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-password}@postgres:5432/new_service_db
+  #   ports:
+  #     - "3001:3001"
+  #   volumes:
+  #     - ${WORKSPACE_ROOT:-..}/apps/services/new-service/src:/app/apps/services/new-service/src
+  #     - ${WORKSPACE_ROOT:-..}/libs/nestjs/src:/app/libs/nestjs/src
+  #   <<: *service-common
+  #   depends_on:
+  #     <<: *service-depends
+  #   healthcheck:
+  #     <<: *healthcheck-defaults
+  #     test: ["CMD-SHELL", "curl -sf http://localhost:3001/api/v1/ping || exit 1"]
+  #     interval: 30s
+  #     start_period: 60s
+
+# ==============================================================================
+# NETWORKS
+# ==============================================================================
+networks:
+  backend:
+    name: ${PROJECT_NAME:-codehive}-backend
+    driver: bridge
+  observability:
+    name: ${PROJECT_NAME:-codehive}-observability
+    driver: bridge
+
+# ==============================================================================
+# VOLUMES
+# ==============================================================================
 volumes:
   postgres_data:
-    driver: local
   redis_data:
-    driver: local
   tempo_data:
-    driver: local
-  prometheus_data:
-    driver: local
   loki_data:
-    driver: local
+  prometheus_data:
   grafana_data:
-    driver: local
-  promtail_positions:
-    driver: local
-  # pgadmin_data:
-  #   driver: local
-
-networks:
-  code-hive-network:
-    driver: bridge
-    name: code-hive-network
