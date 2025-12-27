@@ -95,22 +95,29 @@ export class ConfigService extends BaseConfigService<EnvType> {
   }
 
   getTelemetryOptions(): TelemetryModuleOptions {
-    // Simple, automatic configuration with sensible defaults
     return {
       serviceName: this.getAppName(),
       serviceVersion: this.package.version,
       environment: this.server.env,
       tracing: {
-        sampler: this.isProduction() ? 0.1 : 'always', // 10% in prod, 100% in dev
-        exporter: {
-          endpoint: this.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317',
-        },
+        enabled: true,
       },
       metrics: {
-        exporter: {
-          type: 'otlp',
-          endpoint: this.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317',
-          protocol: 'grpc',
+        enabled: true,
+      },
+      logs: {
+        enabled: true,
+      },
+      instrumentation: {
+        enabled: true,
+        nestjs: true,
+        http: {
+          enabled: true,
+          captureHeaders: true,
+          captureBodies: true,
+        },
+        pg: {
+          enabled: true,
         },
       },
     };

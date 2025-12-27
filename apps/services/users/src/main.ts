@@ -1,8 +1,5 @@
-import { loadEnv } from '@code-hive/nestjs/config';
-loadEnv();
-// eslint-disable-next-line import/order
-import { initOpenTelemetry } from '@code-hive/nestjs/telemetry';
-initOpenTelemetry();
+import { initTelemetry } from './init-telemetry';
+initTelemetry();
 
 import { LoggerService } from '@code-hive/nestjs/logger';
 import { SwaggerModule } from '@code-hive/nestjs/swagger';

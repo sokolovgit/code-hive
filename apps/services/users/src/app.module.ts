@@ -10,6 +10,7 @@ import {
 import { SwaggerModule } from '@code-hive/nestjs/swagger';
 import {
   HttpSpanInterceptor,
+  MetricsInterceptor,
   TelemetryModule,
   TraceInterceptor,
 } from '@code-hive/nestjs/telemetry';
@@ -57,17 +58,21 @@ import * as schema from './users/users.schema';
   providers: [
     {
       provide: APP_INTERCEPTOR,
-      inject: [LoggerService, ConfigService, ClsService],
-      useFactory: (logger: LoggerService, config: ConfigService, cls: ClsService) =>
-        new HttpLoggingInterceptor(logger, cls, config.getHttpLoggingInterceptorOptions()),
-    },
-    {
-      provide: APP_INTERCEPTOR,
       useClass: TraceInterceptor,
     },
     {
       provide: APP_INTERCEPTOR,
       useClass: HttpSpanInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: MetricsInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      inject: [LoggerService, ConfigService, ClsService],
+      useFactory: (logger: LoggerService, config: ConfigService, cls: ClsService) =>
+        new HttpLoggingInterceptor(logger, cls, config.getHttpLoggingInterceptorOptions()),
     },
     {
       provide: APP_FILTER,

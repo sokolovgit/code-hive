@@ -2,10 +2,10 @@ import { Environments } from '@code-hive/nestjs/enums';
 import { z } from 'zod';
 
 export const validationSchema = z.object({
-  NODE_ENV: z.enum(Object.values(Environments)),
-
   npm_package_name: z.string(),
   npm_package_version: z.string(),
+
+  NODE_ENV: z.enum(Object.values(Environments)),
 
   PORT: z.coerce.number().default(3000),
   HOST: z.string().default('0.0.0.0'),
@@ -19,7 +19,6 @@ export const validationSchema = z.object({
 
   DATABASE_URL: z.url(),
 
-  // OpenTelemetry (optional - works out of the box with defaults)
   OTEL_EXPORTER_OTLP_ENDPOINT: z.url().optional(),
 });
 
