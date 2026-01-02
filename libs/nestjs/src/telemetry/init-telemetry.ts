@@ -1,6 +1,7 @@
 import { NodeSDK } from '@opentelemetry/sdk-node';
 
 import { Environments } from '../enums';
+import { getAppName, getAppVersion } from '../utils';
 
 import { createAutoInstrumentations } from './instrumentations/auto-instrumentations';
 import { createNestJSInstrumentation } from './instrumentations/nestjs.instrumentation';
@@ -24,13 +25,13 @@ export type InitTelemetryOptions = Partial<{
 
   /**
    * Service name
-   * @default process.env.APP_NAME || 'nestjs-app'
+   * @default getAppName()
    */
   serviceName: string;
 
   /**
    * Service version
-   * @default process.env.APP_VERSION || package.json version
+   * @default getAppVersion()
    */
   serviceVersion: string;
 
@@ -170,8 +171,8 @@ export const initOpenTelemetry = (options: InitTelemetryOptions = {}) => {
 
     if (!options.silent && sdk) {
       console.log('OpenTelemetry SDK initialized successfully', {
-        serviceName: options.serviceName || process.env.APP_NAME || 'nestjs-app',
-        serviceVersion: options.serviceVersion || process.env.APP_VERSION || 'unknown',
+        serviceName: options.serviceName || getAppName(),
+        serviceVersion: options.serviceVersion || getAppVersion(),
         environment,
         endpoint,
         protocol,

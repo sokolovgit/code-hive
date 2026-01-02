@@ -10,7 +10,18 @@
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\"",
-    "prepare": "husky"
+    "prepare": "husky",
+    "infra:up": "docker compose -f infra/docker/docker-compose.yml --profile core --profile observability up -d",
+    "infra:up:all": "docker compose -f infra/docker/docker-compose.yml --profile core --profile messaging --profile storage --profile observability --profile tools up -d",
+    "infra:up:core": "docker compose -f infra/docker/docker-compose.yml --profile core up -d",
+    "infra:down": "docker compose -f infra/docker/docker-compose.yml down",
+    "infra:down:volumes": "docker compose -f infra/docker/docker-compose.yml down -v",
+    "infra:logs": "docker compose -f infra/docker/docker-compose.yml logs -f",
+    "infra:ps": "docker compose -f infra/docker/docker-compose.yml ps",
+    "db:migrate": "turbo run db:migrate",
+    "db:generate": "turbo run db:generate",
+    "db:push": "turbo run db:push",
+    "db:seed": "turbo run db:seed"
   },
   "engines": {
     "node": ">=24.12.0",

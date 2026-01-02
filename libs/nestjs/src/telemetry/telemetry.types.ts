@@ -15,13 +15,13 @@ export interface TelemetryModuleOptions {
 
   /**
    * Service name for resource attributes
-   * @default process.env.APP_NAME || 'nestjs-app'
+   * @default getAppName()
    */
   serviceName?: string;
 
   /**
    * Service version
-   * @default process.env.APP_VERSION || package.json version
+   * @default getAppVersion()
    */
   serviceVersion?: string;
 

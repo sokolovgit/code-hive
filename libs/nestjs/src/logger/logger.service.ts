@@ -75,7 +75,7 @@ export class LoggerService implements NestLoggerService {
       const packageJson = JSON.parse(readFileSync(packagePath, 'utf-8'));
       baseContext.version = this.options.serviceVersion || packageJson.version || 'unknown';
     } catch {
-      baseContext.version = this.options.serviceVersion || process.env.APP_VERSION || 'unknown';
+      baseContext.version = this.options.serviceVersion || getAppVersion() || 'unknown';
     }
 
     // Merge with infrastructure context

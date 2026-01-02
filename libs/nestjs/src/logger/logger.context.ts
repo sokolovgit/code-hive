@@ -3,6 +3,8 @@ import * as os from 'os';
 import { Injectable } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 
+import { getAppVersion } from '../utils';
+
 export interface LoggerContext {
   // Request correlation
   requestId?: string;
@@ -230,7 +232,7 @@ export function getInfrastructureContext(): Record<string, unknown> {
     namespace: process.env.NAMESPACE || process.env.KUBERNETES_NAMESPACE,
     region: process.env.AWS_REGION || process.env.REGION || process.env.GCP_REGION,
     zone: process.env.AWS_AVAILABILITY_ZONE || process.env.GCP_ZONE,
-    version: process.env.APP_VERSION || process.env.VERSION,
+    version: getAppVersion(),
     commit: process.env.GIT_COMMIT || process.env.COMMIT_SHA || process.env.GITHUB_SHA,
     build: process.env.BUILD_NUMBER || process.env.CI_BUILD_NUMBER,
     deployment: process.env.DEPLOYMENT_ID,

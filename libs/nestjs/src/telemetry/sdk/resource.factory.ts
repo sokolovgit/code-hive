@@ -2,6 +2,7 @@ import { readFileSync } from 'fs';
 import * as os from 'os';
 import { join } from 'path';
 
+import { getAppName, getAppVersion } from '@code-hive/nestjs/utils';
 import {
   Resource,
   resourceFromAttributes,
@@ -66,10 +67,9 @@ export function createResource(options: ResourceFactoryOptions = {}): Resource {
     try {
       const packagePath = join(process.cwd(), 'package.json');
       const packageJson = JSON.parse(readFileSync(packagePath, 'utf-8'));
-      resourceAttributes[SEMRESATTRS_SERVICE_NAME] =
-        packageJson.name || process.env.APP_NAME || 'nestjs-app';
+      resourceAttributes[SEMRESATTRS_SERVICE_NAME] = getAppName() || packageJson.name;
     } catch {
-      resourceAttributes[SEMRESATTRS_SERVICE_NAME] = process.env.APP_NAME || 'nestjs-app';
+      resourceAttributes[SEMRESATTRS_SERVICE_NAME] = getAppName();
     }
   }
 
@@ -82,9 +82,9 @@ export function createResource(options: ResourceFactoryOptions = {}): Resource {
       const packagePath = join(process.cwd(), 'package.json');
       const packageJson = JSON.parse(readFileSync(packagePath, 'utf-8'));
       resourceAttributes[SEMRESATTRS_SERVICE_VERSION] =
-        packageJson.version || process.env.APP_VERSION || 'unknown';
+        packageJson.version || getAppVersion() || 'unknown';
     } catch {
-      resourceAttributes[SEMRESATTRS_SERVICE_VERSION] = process.env.APP_VERSION || 'unknown';
+      resourceAttributes[SEMRESATTRS_SERVICE_VERSION] = getAppVersion() || 'unknown';
     }
   }
 

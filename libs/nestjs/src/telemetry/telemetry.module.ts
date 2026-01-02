@@ -13,6 +13,7 @@ import { ClsService } from 'nestjs-cls';
 
 import { ClsModuleWrapper } from '../cls';
 import { LoggerModule, LoggerService, LoggerContextService } from '../logger';
+import { getAppName, getAppVersion } from '../utils';
 
 import { getGlobalSdk } from './init-telemetry';
 import { createAutoInstrumentations } from './instrumentations/auto-instrumentations';
@@ -112,7 +113,7 @@ export class TelemetryModule implements OnModuleInit, OnModuleDestroy {
         if (!opts.enabled && opts.enabled !== undefined) {
           return trace.getTracer('nestjs-disabled');
         }
-        const serviceName = opts.serviceName || process.env.APP_NAME || 'nestjs-app';
+        const serviceName = opts.serviceName || getAppName();
         return trace.getTracer(serviceName);
       },
       inject: [TELEMETRY_OPTIONS],
@@ -124,7 +125,7 @@ export class TelemetryModule implements OnModuleInit, OnModuleDestroy {
         if (!opts.enabled && opts.enabled !== undefined) {
           return metrics.getMeter('nestjs-disabled');
         }
-        const serviceName = opts.serviceName || process.env.APP_NAME || 'nestjs-app';
+        const serviceName = opts.serviceName || getAppName();
         return metrics.getMeter(serviceName);
       },
       inject: [TELEMETRY_OPTIONS],
@@ -139,9 +140,16 @@ export class TelemetryModule implements OnModuleInit, OnModuleDestroy {
         if (opts.logs?.enabled === false) {
           return null;
         }
-        // Logs API support may vary by OpenTelemetry version
-        // Return null for now - can be implemented when logs API is stable
-        return null;
+        // Get the logger from the OpenTelemetry logs API
+        const serviceName = opts.serviceName || getAppName();
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          const { logs } = require('@opentelemetry/api-logs');
+          return logs.getLogger(serviceName);
+        } catch {
+          // OpenTelemetry logs API not available
+          return null;
+        }
       },
       inject: [TELEMETRY_OPTIONS],
     };
@@ -204,7 +212,7 @@ export class TelemetryModule implements OnModuleInit, OnModuleDestroy {
         if (!opts.enabled && opts.enabled !== undefined) {
           return trace.getTracer('nestjs-disabled');
         }
-        const serviceName = opts.serviceName || process.env.APP_NAME || 'nestjs-app';
+        const serviceName = opts.serviceName || getAppName();
         return trace.getTracer(serviceName);
       },
       inject: [TELEMETRY_OPTIONS],
@@ -216,7 +224,7 @@ export class TelemetryModule implements OnModuleInit, OnModuleDestroy {
         if (!opts.enabled && opts.enabled !== undefined) {
           return metrics.getMeter('nestjs-disabled');
         }
-        const serviceName = opts.serviceName || process.env.APP_NAME || 'nestjs-app';
+        const serviceName = opts.serviceName || getAppName();
         return metrics.getMeter(serviceName);
       },
       inject: [TELEMETRY_OPTIONS],
@@ -231,9 +239,16 @@ export class TelemetryModule implements OnModuleInit, OnModuleDestroy {
         if (opts.logs?.enabled === false) {
           return null;
         }
-        // Logs API support may vary by OpenTelemetry version
-        // Return null for now - can be implemented when logs API is stable
-        return null;
+        // Get the logger from the OpenTelemetry logs API
+        const serviceName = opts.serviceName || getAppName();
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          const { logs } = require('@opentelemetry/api-logs');
+          return logs.getLogger(serviceName);
+        } catch {
+          // OpenTelemetry logs API not available
+          return null;
+        }
       },
       inject: [TELEMETRY_OPTIONS],
     };
@@ -360,8 +375,8 @@ export class TelemetryModule implements OnModuleInit, OnModuleDestroy {
       const sdk = startSDK(sdkOptions);
       if (sdk) {
         logger.info('OpenTelemetry SDK started', {
-          serviceName: options.serviceName || process.env.APP_NAME || 'nestjs-app',
-          serviceVersion: options.serviceVersion || process.env.APP_VERSION || 'unknown',
+          serviceName: options.serviceName || getAppName(),
+          serviceVersion: options.serviceVersion || getAppVersion(),
           environment,
         });
         TelemetryModule.sdk = sdk;
