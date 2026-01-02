@@ -1,0 +1,68 @@
+{
+  "dashboard": {
+    "title": "Trace Waterfall",
+    "tags": ["traces", "distributed-tracing"],
+    "timezone": "browser",
+    "schemaVersion": 38,
+    "version": 1,
+    "refresh": "10s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Trace Search",
+        "type": "traces",
+        "gridPos": { "h": 20, "w": 24, "x": 0, "y": 0 },
+        "targets": [
+          {
+            "queryType": "traceql",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "serviceName": "",
+          "spanName": "",
+          "search": "",
+          "minDuration": "",
+          "maxDuration": "",
+          "tags": []
+        }
+      },
+      {
+        "id": 2,
+        "title": "Trace Duration by Service",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(tempo_spanmetrics_latency_bucket[5m])) by (le, service_name))",
+            "legendFormat": "{{service_name}} p95",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [{ "format": "s", "label": "Duration" }, { "format": "short" }]
+      },
+      {
+        "id": 3,
+        "title": "Trace Rate by Service",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "targets": [
+          {
+            "expr": "sum(rate(tempo_spanmetrics_calls_total[5m])) by (service_name)",
+            "legendFormat": "{{service_name}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [{ "format": "short", "label": "Traces/sec" }, { "format": "short" }]
+      }
+    ]
+  }
+}

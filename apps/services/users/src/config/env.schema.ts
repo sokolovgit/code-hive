@@ -19,7 +19,7 @@ export const validationSchema = z.object({
 
   DATABASE_URL: z.url(),
 
-  OTEL_EXPORTER_OTLP_ENDPOINT: z.url().optional(),
+  OTLP_URL: z.url(),
 });
 
 export type EnvType = z.infer<typeof validationSchema>;

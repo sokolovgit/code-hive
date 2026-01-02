@@ -150,7 +150,7 @@ export interface TelemetryModuleOptions {
 
       /**
        * OTLP endpoint URL (for otlp type)
-       * @default process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317'
+       * @default process.env.OTLP_URL || process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317'
        */
       endpoint?: string;
 

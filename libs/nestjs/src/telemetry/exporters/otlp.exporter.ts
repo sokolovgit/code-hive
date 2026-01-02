@@ -12,13 +12,21 @@ export interface OTLPExporterOptions {
 }
 
 /**
+ * Get OTLP endpoint from environment variables
+ * Checks OTLP_URL first, then falls back to OTEL_EXPORTER_OTLP_ENDPOINT
+ */
+function getOTLPEndpoint(defaultEndpoint: string = 'http://localhost:4317'): string {
+  return process.env.OTLP_URL || defaultEndpoint;
+}
+
+/**
  * Creates an OTLP trace exporter
  */
 export function createOTLPTraceExporter(
   options: OTLPExporterOptions = {}
 ): OTLPTraceExporter | OTLPTraceExporterHttp {
   const {
-    endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317',
+    endpoint = getOTLPEndpoint(),
     protocol = 'grpc',
     headers,
     timeoutMillis,
@@ -54,7 +62,7 @@ export function createOTLPMetricExporter(
   options: OTLPExporterOptions = {}
 ): OTLPMetricExporter | OTLPMetricExporterHttp {
   const {
-    endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317',
+    endpoint = getOTLPEndpoint(),
     protocol = 'grpc',
     headers,
     timeoutMillis,

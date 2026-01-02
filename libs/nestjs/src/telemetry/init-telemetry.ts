@@ -43,7 +43,7 @@ export type InitTelemetryOptions = Partial<{
 
   /**
    * OTLP endpoint for traces/metrics/logs
-   * @default process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317'
+   * @default process.env.OTLP_URL || process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317'
    */
   endpoint: string;
 
@@ -108,8 +108,10 @@ export const initOpenTelemetry = (options: InitTelemetryOptions = {}) => {
   }
 
   // Build SDK options
-  const endpoint =
-    options.endpoint || process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317';
+  // Check OTLP_URL first, then OTEL_EXPORTER_OTLP_ENDPOINT for backward compatibility
+  const defaultEndpoint =
+    process.env.OTLP_URL || process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317';
+  const endpoint = options.endpoint || defaultEndpoint;
   const protocol = options.protocol || 'grpc';
 
   // Create instrumentations

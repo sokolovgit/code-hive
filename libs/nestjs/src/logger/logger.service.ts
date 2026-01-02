@@ -6,6 +6,7 @@ import { Injectable, LoggerService as NestLoggerService } from '@nestjs/common';
 import pino, { Logger as PinoLogger, LoggerOptions } from 'pino';
 
 import { Environments } from '../enums';
+import { getAppVersion } from '../utils';
 
 import { loggerContext, getCallerContext, getInfrastructureContext } from './logger.context';
 

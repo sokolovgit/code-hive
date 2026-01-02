@@ -1,0 +1,209 @@
+services:
+  # ============================================================================
+  # Databases
+  # ============================================================================
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/docker/databases/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-postgres}']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend-net
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:8.0
+    container_name: mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGODB_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGODB_PASSWORD:-password}
+      MONGO_INITDB_DATABASE: ${MONGODB_DB:-admin}
+    ports:
+      - '${MONGODB_PORT:-27017}:27017'
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ['CMD', 'mongosh', '--eval', "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend-net
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    container_name: redis
+    command: redis-server /etc/redis/redis.conf
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    volumes:
+      - redis_data:/data
+      - ./infra/docker/databases/redis/redis.conf:/etc/redis/redis.conf
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - backend-net
+    restart: unless-stopped
+
+  # ============================================================================
+  # Observability Stack
+  # ============================================================================
+
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: loki
+    command: -config.file=/etc/loki/loki-config.yaml
+    ports:
+      - '${LOKI_PORT:-3100}:3100'
+    volumes:
+      - loki_data:/loki
+      - ./infra/docker/observability/loki/loki-config.yaml:/etc/loki/loki-config.yaml
+    networks:
+      - backend-net
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - '${PROMETHEUS_PORT:-9090}:9090'
+    volumes:
+      - prometheus_data:/prometheus
+      - ./infra/docker/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - backend-net
+    restart: unless-stopped
+
+  tempo:
+    image: grafana/tempo:2.5.0
+    container_name: tempo
+    command: ['-config.file=/etc/tempo/tempo-config.yaml']
+    ports:
+      - '${TEMPO_PORT:-3200}:3200'
+      - '4317:4317' # OTLP gRPC
+      - '4318:4318' # OTLP HTTP
+    volumes:
+      - tempo_data:/var/tempo
+      - ./infra/docker/observability/tempo/tempo-config.yaml:/etc/tempo/tempo-config.yaml
+    networks:
+      - backend-net
+    restart: unless-stopped
+
+  grafana-agent:
+    image: grafana/agent:v0.44.6
+    container_name: grafana-agent
+    command:
+      - -config.file=/etc/agent/agent.yaml
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./infra/docker/observability/grafana-agent/agent.yaml:/etc/agent/agent.yaml
+    ports:
+      - '12345:12345'
+    networks:
+      - backend-net
+    restart: unless-stopped
+    depends_on:
+      - loki
+      - prometheus
+      - tempo
+
+  grafana:
+    image: grafana/grafana:11.2.2
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=password
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:${GRAFANA_PORT:-4000}
+    ports:
+      - '${GRAFANA_PORT:-4000}:3000'
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infra/docker/observability/grafana/provisioning:/etc/grafana/provisioning
+    networks:
+      - backend-net
+    restart: unless-stopped
+    depends_on:
+      - loki
+      - prometheus
+      - tempo
+
+  # ============================================================================
+  # Application Services
+  # ============================================================================
+
+  users-service:
+    build:
+      context: .
+      dockerfile: infra/docker/services/Dockerfile.users
+    container_name: users-service
+    volumes:
+      # Mount .env files so services can load them via loadEnv()
+      # Services load root .env first, then service folder .env
+      - ./.env:/app/.env:ro
+      - ./apps/services/users/.env:/app/apps/services/users/.env:ro
+    # environment:
+    #   # Only override container networking URLs (must use container names, not localhost)
+    #   # These override values from .env files for containerized environment
+    #   # Environment variables set here take precedence over .env file values
+    #   DATABASE_URL: ${DATABASE_URL_USERS:-postgresql://admin:password@postgres:5432/users}
+    #   REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+    #   OTLP_URL: ${OTLP_URL:-http://tempo:4318}
+    ports:
+      - '${USERS_SERVICE_PORT:-3000}:3000'
+    networks:
+      - backend-net
+    restart: unless-stopped
+    # Services handle dependency retry, no depends_on for readiness
+
+# ============================================================================
+# Networks
+# ============================================================================
+
+networks:
+  backend-net:
+    name: ${DOCKER_NETWORK:-backend-net}
+    driver: bridge
+
+# ============================================================================
+# Volumes
+# ============================================================================
+
+volumes:
+  postgres_data:
+    name: ${COMPOSE_PROJECT_NAME:-code-hive}_postgres_data
+  mongodb_data:
+    name: ${COMPOSE_PROJECT_NAME:-code-hive}_mongodb_data
+  redis_data:
+    name: ${COMPOSE_PROJECT_NAME:-code-hive}_redis_data
+  loki_data:
+    name: ${COMPOSE_PROJECT_NAME:-code-hive}_loki_data
+  prometheus_data:
+    name: ${COMPOSE_PROJECT_NAME:-code-hive}_prometheus_data
+  tempo_data:
+    name: ${COMPOSE_PROJECT_NAME:-code-hive}_tempo_data
+  grafana_data:
+    name: ${COMPOSE_PROJECT_NAME:-code-hive}_grafana_data
