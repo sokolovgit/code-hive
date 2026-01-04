@@ -18,13 +18,27 @@ export const loadEnv = (
     silent: false,
   }
 ) => {
+  // Merge default config with provided config options
+  const dotenvConfig = {
+    debug: process.env.NODE_ENV !== Environments.PRODUCTION,
+    quiet: process.env.NODE_ENV === Environments.PRODUCTION,
+    ...options.config,
+  };
+
+  const dotenvResult = config(dotenvConfig);
   const result = expand({
-    ...config(options.config),
+    ...dotenvResult,
     ...options.expand,
   });
 
   if (!options.silent) {
-    console.log('Environment variables loaded successfully');
+    if (result?.error) {
+      console.error(`[loadEnv] Error: ${result.error.message}`);
+    } else if (result?.parsed) {
+      console.log(`[loadEnv] Loaded ${Object.keys(result.parsed).length} environment variables`);
+    } else {
+      console.warn('[loadEnv] No environment variables were loaded');
+    }
   }
 
   return result;

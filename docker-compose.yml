@@ -158,20 +158,15 @@ services:
   users-service:
     build:
       context: .
-      dockerfile: infra/docker/services/Dockerfile.users
+      dockerfile: infra/docker/services/local/Dockerfile.users
     container_name: users-service
+    working_dir: /app/apps/services/users
     volumes:
-      # Mount .env files so services can load them via loadEnv()
-      # Services load root .env first, then service folder .env
-      - ./.env:/app/.env:ro
-      - ./apps/services/users/.env:/app/apps/services/users/.env:ro
-    # environment:
-    #   # Only override container networking URLs (must use container names, not localhost)
-    #   # These override values from .env files for containerized environment
-    #   # Environment variables set here take precedence over .env file values
-    #   DATABASE_URL: ${DATABASE_URL_USERS:-postgresql://admin:password@postgres:5432/users}
-    #   REDIS_URL: ${REDIS_URL:-redis://redis:6379}
-    #   OTLP_URL: ${OTLP_URL:-http://tempo:4318}
+      - .:/app
+      - /app/node_modules
+      - /app/apps/*/node_modules
+      - /app/libs/*/node_modules
+      - /app/apps/services/users/dist
     ports:
       - '${USERS_SERVICE_PORT:-3000}:3000'
     networks:

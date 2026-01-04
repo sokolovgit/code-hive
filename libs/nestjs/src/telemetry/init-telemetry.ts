@@ -16,7 +16,7 @@ let globalSdk: NodeSDK | null = null;
  */
 export const getGlobalSdk = (): NodeSDK | null => globalSdk;
 
-export type InitTelemetryOptions = Partial<{
+export type SetupTelemetryOptions = Partial<{
   /**
    * Enable/disable telemetry initialization
    * @default true (auto-detected: disabled in test, enabled otherwise)
@@ -91,7 +91,7 @@ export type InitTelemetryOptions = Partial<{
  * // ... rest of imports
  * ```
  */
-export const initOpenTelemetry = (options: InitTelemetryOptions = {}) => {
+export const setupOpenTelemetry = (options: SetupTelemetryOptions = {}) => {
   const environment = options.environment || process.env.NODE_ENV || Environments.DEVELOPMENT;
   const isDevelopment = environment === Environments.DEVELOPMENT;
   const isTest = environment === Environments.TEST;
@@ -109,8 +109,7 @@ export const initOpenTelemetry = (options: InitTelemetryOptions = {}) => {
 
   // Build SDK options
   // Check OTLP_URL first, then OTEL_EXPORTER_OTLP_ENDPOINT for backward compatibility
-  const defaultEndpoint =
-    process.env.OTLP_URL || process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317';
+  const defaultEndpoint = process.env.OTLP_URL || 'http://localhost:4317';
   const endpoint = options.endpoint || defaultEndpoint;
   const protocol = options.protocol || 'grpc';
 

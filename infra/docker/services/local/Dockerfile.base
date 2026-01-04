@@ -1,0 +1,23 @@
+# Base Dockerfile for NestJS services in Turborepo - Development with Hot Reload
+# Simplified for local development: installs deps, source code mounted as volumes
+
+FROM node:24-alpine
+
+RUN apk add --no-cache libc6-compat
+
+WORKDIR /app
+
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@10.26.0 --activate
+
+# Copy workspace config and package files (source code mounted via volumes)
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+COPY apps/ ./apps/
+COPY libs/ ./libs/
+
+# Install dependencies (node_modules excluded by .dockerignore, installed here)
+RUN pnpm install --frozen-lockfile
+
+ENV NODE_ENV=development
+EXPOSE 3000
+

@@ -1,0 +1,28 @@
+# Dockerfile for users service - Development with Hot Reload
+# Minimal: installs deps, runs tsx watch for hot reload
+
+FROM node:24-alpine
+
+RUN apk add --no-cache libc6-compat
+
+WORKDIR /app
+
+RUN corepack enable && corepack prepare pnpm@10.26.0 --activate
+
+# Copy workspace files for dependency installation (source mounted as volumes)
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+COPY apps/ ./apps/
+COPY libs/ ./libs/
+# Copy service-specific .env file for loadEnv() to load at runtime
+COPY apps/services/users/.env ./apps/services/users/.env
+
+RUN pnpm install --frozen-lockfile
+
+ENV NODE_ENV=development
+ENV SERVICE_NAME=users-service
+EXPOSE 3000
+
+# Hot reload: uses package.json dev script (tsx with explicit tsconfig)
+WORKDIR /app/apps/services/users
+CMD ["pnpm", "dev"]
+

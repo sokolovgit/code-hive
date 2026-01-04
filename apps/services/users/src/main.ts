@@ -1,5 +1,4 @@
-import { initTelemetry } from './init-telemetry';
-initTelemetry();
+import './init-telemetry';
 
 import { LoggerService } from '@code-hive/nestjs/logger';
 import { SwaggerModule } from '@code-hive/nestjs/swagger';

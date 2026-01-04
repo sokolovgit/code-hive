@@ -10,6 +10,7 @@
     "types": ["node"],
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
+    "useDefineForClassFields": false,
     "target": "ES2024",
     "moduleResolution": "NodeNext",
     "baseUrl": ".",

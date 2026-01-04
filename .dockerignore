@@ -52,6 +52,8 @@ lerna-debug.log*
 .env.*.local
 **/.env
 **/.env.local
+# Allow service-specific .env files
+!apps/services/**/.env
 
 # OS
 .DS_Store
