@@ -99,7 +99,11 @@ export function createAutoInstrumentations(
   const pgOptions = typeof pgConfig === 'object' ? pgConfig : {};
 
   const captureQueryText = pgOptions.captureQueryText !== false; // Default: true
+  const captureParameters = pgOptions.captureParameters !== false; // Default: true
   const captureRowCount = pgOptions.captureRowCount !== false; // Default: true
+
+  // enhancedDatabaseReporting enables query text and parameter capture
+  const enhancedDatabaseReporting = captureQueryText && captureParameters;
 
   // Get auto-instrumentations with configuration
   const instrumentations = getNodeAutoInstrumentations({
@@ -174,8 +178,11 @@ export function createAutoInstrumentations(
     },
     '@opentelemetry/instrumentation-pg': {
       enabled: pgEnabled,
+      // requireParentSpan: false ensures pg queries create spans even without a parent span
       requireParentSpan: false,
-      enhancedDatabaseReporting: captureQueryText,
+      // enhancedDatabaseReporting enables query text and parameter capture
+      enhancedDatabaseReporting: enhancedDatabaseReporting,
+      // Don't add SQL commenter comments to queries (can interfere with some ORMs)
       addSqlCommenterCommentToQueries: false,
       responseHook: (span: Span, responseInfo: { data?: unknown; rowCount?: number }) => {
         if (captureRowCount && responseInfo.rowCount !== undefined) {

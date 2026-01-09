@@ -1,28 +1,38 @@
 # Dockerfile for users service - Development with Hot Reload
-# Minimal: installs deps, runs tsx watch for hot reload
+# Optimized for local dev: installs deps, source code mounted via volumes
+#
+# IMPORTANT: Source code (apps/, libs/) is mounted as volumes in docker-compose.yml
+# This Dockerfile only installs dependencies. File changes trigger hot reload via tsx watch.
 
 FROM node:24-alpine
 
+# Required for file watching in containers
 RUN apk add --no-cache libc6-compat
 
 WORKDIR /app
 
+# Install pnpm
 RUN corepack enable && corepack prepare pnpm@10.26.0 --activate
 
-# Copy workspace files for dependency installation (source mounted as volumes)
+# Copy workspace config files
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+
+# Copy apps/ and libs/ directory structure (needed for pnpm workspace resolution)
+# NOTE: Source code will be overridden by volume mounts, but package.json files are needed
+# for pnpm install to resolve workspace dependencies correctly
 COPY apps/ ./apps/
 COPY libs/ ./libs/
-# Copy service-specific .env file for loadEnv() to load at runtime
-COPY apps/services/users/.env ./apps/services/users/.env
 
+# Install dependencies
+# node_modules will be preserved via anonymous volume mount in docker-compose.yml
 RUN pnpm install --frozen-lockfile
 
 ENV NODE_ENV=development
 ENV SERVICE_NAME=users-service
 EXPOSE 3000
 
-# Hot reload: uses package.json dev script (tsx with explicit tsconfig)
+# Hot reload: uses tsx watch (configured in package.json dev script)
+# Source code changes trigger restarts via volume mounts + CHOKIDAR_USEPOLLING
 WORKDIR /app/apps/services/users
 CMD ["pnpm", "dev"]
 

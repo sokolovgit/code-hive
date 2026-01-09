@@ -61,10 +61,10 @@ export class DrizzleModule implements OnModuleDestroy {
 
     const poolProvider: Provider = {
       provide: DRIZZLE_POOL,
-      useFactory: (opts: DrizzleModuleOptions, logger?: LoggerService) => {
-        return this.createPool(opts, logger);
+      useFactory: (opts: DrizzleModuleOptions, logger: LoggerService | null) => {
+        return this.createPool(opts, logger || undefined);
       },
-      inject: [DRIZZLE_OPTIONS, LoggerService],
+      inject: [DRIZZLE_OPTIONS, { token: LoggerService, optional: true }],
     };
 
     const dbProvider: Provider = {
@@ -72,11 +72,11 @@ export class DrizzleModule implements OnModuleDestroy {
       useFactory: (
         pool: Pool,
         opts: DrizzleModuleOptions,
-        logger?: LoggerService
+        logger: LoggerService | null
       ): DrizzleDatabase => {
-        return this.createDrizzleInstance(pool, opts, logger);
+        return this.createDrizzleInstance(pool, opts, logger || undefined);
       },
-      inject: [DRIZZLE_POOL, DRIZZLE_OPTIONS, LoggerService],
+      inject: [DRIZZLE_POOL, DRIZZLE_OPTIONS, { token: LoggerService, optional: true }],
     };
 
     return {
@@ -90,18 +90,18 @@ export class DrizzleModule implements OnModuleDestroy {
   private static createProviders(options: DrizzleModuleOptions): Provider[] {
     const poolProvider: Provider = {
       provide: DRIZZLE_POOL,
-      useFactory: (logger?: LoggerService) => {
-        return this.createPool(options, logger);
+      useFactory: (logger: LoggerService | null) => {
+        return this.createPool(options, logger || undefined);
       },
-      inject: [LoggerService],
+      inject: [{ token: LoggerService, optional: true }],
     };
 
     const dbProvider: Provider = {
       provide: DRIZZLE_DB,
-      useFactory: (pool: Pool, logger?: LoggerService): DrizzleDatabase => {
-        return this.createDrizzleInstance(pool, options, logger);
+      useFactory: (pool: Pool, logger: LoggerService | null): DrizzleDatabase => {
+        return this.createDrizzleInstance(pool, options, logger || undefined);
       },
-      inject: [DRIZZLE_POOL, LoggerService],
+      inject: [DRIZZLE_POOL, { token: LoggerService, optional: true }],
     };
 
     return [poolProvider, dbProvider];

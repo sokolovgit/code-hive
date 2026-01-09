@@ -60,7 +60,7 @@ import { Module } from '@nestjs/common';
           exporter: {
             type: 'otlp',
             protocol: 'grpc',
-            endpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317',
+            endpoint: process.env.OTLP_URL || 'http://localhost:4317',
           },
         },
         metrics: {
@@ -75,7 +75,7 @@ import { Module } from '@nestjs/common';
           exporter: {
             type: 'otlp',
             protocol: 'grpc',
-            endpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317',
+            endpoint: process.env.OTLP_URL || 'http://localhost:4317',
           },
         },
       }),
@@ -421,7 +421,7 @@ resourceAttributes: {
 
 The module respects standard OpenTelemetry environment variables:
 
-- `OTEL_EXPORTER_OTLP_ENDPOINT`: OTLP endpoint URL
+- `OTLP_URL`: OTLP endpoint URL
 - `OTEL_SERVICE_NAME`: Service name
 - `OTEL_SERVICE_VERSION`: Service version
 - `OTEL_RESOURCE_ATTRIBUTES`: Additional resource attributes

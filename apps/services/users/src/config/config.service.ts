@@ -5,6 +5,7 @@ import { HttpLoggingInterceptorOptions, LoggerModuleOptions } from '@code-hive/n
 import { SwaggerModuleOptions } from '@code-hive/nestjs/swagger';
 import { TelemetryModuleOptions } from '@code-hive/nestjs/telemetry';
 import { Injectable } from '@nestjs/common';
+import { schema } from '@users-service/db';
 
 import { EnvType } from './env.schema';
 
@@ -56,7 +57,7 @@ export class ConfigService extends BaseConfigService<EnvType> {
   getDrizzleOptions(): DrizzleModuleOptions {
     return {
       connection: this.database.url,
-      // schema: ...
+      schema: schema,
       logQueries: this.isDevelopment(),
       pool: {
         min: 2,
@@ -118,6 +119,9 @@ export class ConfigService extends BaseConfigService<EnvType> {
         },
         pg: {
           enabled: true,
+          captureQueryText: true,
+          captureParameters: true,
+          captureRowCount: true,
         },
       },
     };

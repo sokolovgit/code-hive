@@ -32,6 +32,7 @@ async function bootstrap() {
   app.setGlobalPrefix(config.globalPrefix);
 
   const isDocsEnabled = config.docs.enabled;
+
   if (isDocsEnabled) {
     await SwaggerModule.setup(app, config.getSwaggerOptions());
   }

@@ -1,13 +1,16 @@
 import { TextMapPropagator } from '@opentelemetry/api';
 import { Instrumentation } from '@opentelemetry/instrumentation';
 import { NodeSDK } from '@opentelemetry/sdk-node';
+import { SpanExporter } from '@opentelemetry/sdk-trace-base';
 
+import { createOTLPTraceExporter, createConsoleTraceExporter } from '../exporters';
 import { createPropagators } from '../propagators';
+import { createSampler, createEnvironmentSampler } from '../samplers';
 
 import { createLogsProvider, LogsProviderOptions } from './logs.provider';
 import { createMetricsProvider, MetricsProviderOptions } from './metrics.provider';
 import { createResource, ResourceFactoryOptions } from './resource.factory';
-import { createTraceProvider, TraceProviderOptions } from './trace.provider';
+import { TraceProviderOptions } from './trace.provider';
 
 export interface SDKFactoryOptions {
   enabled?: boolean;
@@ -61,16 +64,28 @@ export function createSDK(options: SDKFactoryOptions = {}): NodeSDK | null {
     ...resourceOptions,
   });
 
-  // Create providers (they register themselves globally)
-  createTraceProvider({
-    resource,
-    enabled: tracing.enabled !== false,
-    sampler: tracing.sampler,
-    exporter: tracing.exporter,
-    processor: tracing.processor,
-    attributes: tracing.attributes,
-  });
+  // Create trace exporter and sampler for NodeSDK
+  let traceExporter: SpanExporter | undefined;
+  let traceSampler;
 
+  if (tracing.enabled !== false) {
+    const env = process.env.NODE_ENV || 'development';
+    traceSampler = tracing.sampler
+      ? createSampler({ sampler: tracing.sampler })
+      : createEnvironmentSampler(env);
+
+    if (tracing.exporter?.type === 'console' || !tracing.exporter?.type) {
+      traceExporter = createConsoleTraceExporter();
+    } else {
+      traceExporter = createOTLPTraceExporter({
+        endpoint: tracing.exporter.endpoint,
+        protocol: tracing.exporter.protocol,
+        headers: tracing.exporter.headers,
+      }) as unknown as SpanExporter;
+    }
+  }
+
+  // Create metrics provider (for now, keep the existing approach)
   createMetricsProvider({
     resource,
     enabled: metrics.enabled !== false,
@@ -80,6 +95,7 @@ export function createSDK(options: SDKFactoryOptions = {}): NodeSDK | null {
     attributes: metrics.attributes,
   });
 
+  // Create logs provider
   createLogsProvider({
     resource,
     enabled: logs.enabled !== false,
@@ -91,17 +107,17 @@ export function createSDK(options: SDKFactoryOptions = {}): NodeSDK | null {
   // Create propagators
   const contextPropagators = propagators || createPropagators(['tracecontext', 'baggage']);
 
-  // Create SDK
+  // Create SDK with trace exporter directly
+  // NodeSDK will create and register the provider internally with a BatchSpanProcessor
+  // Note: Custom span processor options are not directly supported by NodeSDK's traceExporter option,
+  // but the default BatchSpanProcessor should work for most cases
   const sdk = new NodeSDK({
     resource,
-    traceExporter: undefined, // Handled by trace provider
-    metricReader: undefined, // Handled by metrics provider
+    traceExporter: traceExporter,
+    sampler: traceSampler,
     instrumentations,
     textMapPropagator: contextPropagators.length === 1 ? contextPropagators[0] : undefined, // NodeSDK only supports single propagator, use composite if needed
   });
-
-  // Note: The providers are registered automatically when created
-  // The SDK will use the global providers if they're registered
 
   return sdk;
 }

@@ -54,7 +54,8 @@ See [PORTS.md](./PORTS.md) for complete port allocation table.
 See `.env.example` for all available environment variables. Key variables:
 
 - `DATABASE_URL_*` - Service-specific database URLs
-- `OTLP_URL` - OpenTelemetry endpoint (default: `http://tempo:4318`)
+- `OTLP_URL` - OpenTelemetry endpoint (default: `http://grafana-agent:4317`)
+- `OTLP_PROTOCOL` - OTLP protocol: `grpc` or `http` (default: `grpc`)
 - `SERVICE_NAME` - Required per service
 - `NODE_ENV` - Environment (default: `development`)
 
@@ -76,7 +77,8 @@ All services use:
 
 ## Tracing
 
-- Services export OTLP traces to `http://tempo:4318`
+- Services export OTLP traces to Grafana Agent (default: `http://grafana-agent:4317` via gRPC)
+- Grafana Agent receives traces and forwards them to Tempo
 - View traces in Grafana → Explore → Tempo datasource
 - Traces are automatically correlated with logs
 

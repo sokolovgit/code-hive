@@ -169,6 +169,12 @@ services:
       - /app/apps/services/users/dist
     ports:
       - '${USERS_SERVICE_PORT:-3000}:3000'
+    environment:
+      NODE_ENV: development
+      # CRITICAL for macOS / Docker Desktop file watching
+      CHOKIDAR_USEPOLLING: 'true'
+      CHOKIDAR_INTERVAL: '300'
+      SERVICE_NAME: users-service
     networks:
       - backend-net
     restart: unless-stopped

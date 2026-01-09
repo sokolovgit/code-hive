@@ -13,7 +13,7 @@ export interface OTLPExporterOptions {
 
 /**
  * Get OTLP endpoint from environment variables
- * Checks OTLP_URL first, then falls back to OTEL_EXPORTER_OTLP_ENDPOINT
+ * Checks OTLP_URL
  */
 function getOTLPEndpoint(defaultEndpoint: string = 'http://localhost:4317'): string {
   return process.env.OTLP_URL || defaultEndpoint;
@@ -33,12 +33,19 @@ export function createOTLPTraceExporter(
     compression,
   } = options;
 
+  // For gRPC, remove http:// or https:// prefix if present
+  // OTLP gRPC exporters expect just host:port
+  let finalEndpoint = endpoint;
+  if (protocol === 'grpc') {
+    finalEndpoint = endpoint.replace(/^https?:\/\//, '');
+  }
+
   const baseConfig: {
     url: string;
     headers?: Record<string, string>;
     timeoutMillis?: number;
   } = {
-    url: endpoint,
+    url: finalEndpoint,
     headers,
     timeoutMillis,
   };
@@ -69,12 +76,19 @@ export function createOTLPMetricExporter(
     compression,
   } = options;
 
+  // For gRPC, remove http:// or https:// prefix if present
+  // OTLP gRPC exporters expect just host:port
+  let finalEndpoint = endpoint;
+  if (protocol === 'grpc') {
+    finalEndpoint = endpoint.replace(/^https?:\/\//, '');
+  }
+
   const baseConfig: {
     url: string;
     headers?: Record<string, string>;
     timeoutMillis?: number;
   } = {
-    url: endpoint,
+    url: finalEndpoint,
     headers,
     timeoutMillis,
   };

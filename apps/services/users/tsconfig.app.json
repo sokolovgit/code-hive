@@ -18,6 +18,11 @@
       "@users-service/*": ["src/*"]
     }
   },
+  "watchOptions": {
+    "watchFile": "dynamicPriorityPolling",
+    "watchDirectory": "dynamicPriorityPolling",
+    "excludeDirectories": ["**/node_modules", "dist"]
+  },
   "include": ["src/**/*.ts"],
   "exclude": ["jest.config.ts", "jest.config.cts", "src/**/*.spec.ts", "src/**/*.test.ts"],
   "references": [

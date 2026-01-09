@@ -43,7 +43,7 @@ export type SetupTelemetryOptions = Partial<{
 
   /**
    * OTLP endpoint for traces/metrics/logs
-   * @default process.env.OTLP_URL || process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317'
+   * @default process.env.OTLP_URL || 'http://localhost:4317'
    */
   endpoint: string;
 
@@ -81,14 +81,18 @@ export type SetupTelemetryOptions = Partial<{
  * This ensures that instrumentation patches (like pg, http) are applied
  * before the modules are loaded.
  *
+ * CRITICAL: This must be called BEFORE any database modules (like pg) are imported.
+ * The pg instrumentation works by patching the pg module at import time, so if
+ * pg is imported before this function runs, the instrumentation won't work.
+ *
  * This should be called in main.ts before any other imports:
  * ```typescript
  * import { loadEnv } from '@code-hive/nestjs/config';
- * import { initOpenTelemetry } from '@code-hive/nestjs/telemetry';
+ * import { setupOpenTelemetry } from '@code-hive/nestjs/telemetry';
  *
  * loadEnv();
- * initOpenTelemetry();
- * // ... rest of imports
+ * setupOpenTelemetry();
+ * // ... rest of imports (pg, drizzle, etc. can now be imported)
  * ```
  */
 export const setupOpenTelemetry = (options: SetupTelemetryOptions = {}) => {
@@ -108,16 +112,20 @@ export const setupOpenTelemetry = (options: SetupTelemetryOptions = {}) => {
   }
 
   // Build SDK options
-  // Check OTLP_URL first, then OTEL_EXPORTER_OTLP_ENDPOINT for backward compatibility
   const defaultEndpoint = process.env.OTLP_URL || 'http://localhost:4317';
   const endpoint = options.endpoint || defaultEndpoint;
-  const protocol = options.protocol || 'grpc';
+  const protocol = options.protocol || (process.env.OTLP_PROTOCOL as 'grpc' | 'http') || 'grpc';
 
   // Create instrumentations
   const autoInstrumentations = createAutoInstrumentations({
     enabled: true,
     http: options.httpInstrumentation,
-    pg: true,
+    pg: {
+      enabled: true,
+      captureQueryText: true,
+      captureParameters: true,
+      captureRowCount: true,
+    },
     redis: true,
     grpc: true,
   });

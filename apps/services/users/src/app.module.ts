@@ -20,12 +20,9 @@ import { ClsService } from 'nestjs-cls';
 
 import { ConfigService } from './config/config.service';
 import { validationSchema } from './config/env.schema';
-import { PingController } from './ping.controller';
 import { UsersModule } from './users/users.module';
-import * as schema from './users/users.schema';
 
 @Module({
-  controllers: [PingController],
   imports: [
     ClsModuleWrapper.forRoot({
       plugins: [DrizzleModule.getTransactionalPlugin()],
@@ -48,10 +45,7 @@ import * as schema from './users/users.schema';
     }),
     DrizzleModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        ...config.getDrizzleOptions(),
-        schema,
-      }),
+      useFactory: (config: ConfigService) => config.getDrizzleOptions(),
     }),
     UsersModule,
   ],
